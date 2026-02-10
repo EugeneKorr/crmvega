@@ -105,9 +105,12 @@ class BubbleService {
             finalPayloadContent = '';
         }
 
-        console.log('[Bubble Service] Raw telegram_user_id from payload:', payload.telegram_user_id);
-        const finalTelegramUserId = this.sanitizeNumeric(payload.telegram_user_id);
-        console.log('[Bubble Service] Sanitized telegram_user_id:', finalTelegramUserId);
+        const rawTgId = payload.telegram_user_id;
+        console.log('[Bubble Service] Point-blank check telegram_user_id:', rawTgId);
+
+        // Для Telegram ID используем прямое приведение, чтобы не потерять точность (JS Float ломает большие ID)
+        const finalTelegramUserId = rawTgId ? String(rawTgId).replace(/[^\d]/g, '') : null;
+        console.log('[Bubble Service] Final ID for DB:', finalTelegramUserId);
 
         const messageData = {
             lead_id: this.sanitizeNumeric(lead_id) || (finalMainId ? String(finalMainId).trim() : null),
