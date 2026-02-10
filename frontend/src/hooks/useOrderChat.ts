@@ -84,6 +84,16 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
 
     // Actions
     const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number) => {
+        if (!orderId) {
+            antMessage.error('Нет активной заявки для отправки');
+            return false;
+        }
+
+        // Don't send empty messages without attachments
+        if (!content?.trim() && !file && !voice) {
+            return false;
+        }
+
         const tempId = Date.now();
         const now = new Date().toISOString();
 
@@ -135,11 +145,12 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             }
             // Success: the real message will arrive via socket and deduplicate tempId
             return true;
-        } catch (error) {
-            console.error('Send error:', error);
+        } catch (error: any) {
+            const serverError = error?.response?.data?.error || error?.message || 'Неизвестная ошибка';
+            console.error('Send error:', serverError, error);
             // Mark as error
             setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isPending: false, error: true } : m));
-            antMessage.error('Ошибка отправки');
+            antMessage.error(`Ошибка отправки: ${serverError}`);
             return false;
         }
     };
