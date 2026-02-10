@@ -215,16 +215,19 @@ const InboxPage: React.FC = () => {
         const contactIdFromUrl = searchParams.get('contactId');
         if (contactIdFromUrl) {
             const id = Number(contactIdFromUrl);
-            // Only select if not already selected to prevent infinite loops
+            // ONLY select if NOT already exactly this contact in ref
             if (id && selectedContactRef.current !== id) {
-                const contact = contacts.find(c => c.id === id);
-                if (contact) {
-                    selectContact(contact);
+                // Wait for contacts to be loaded
+                if (contacts.length > 0) {
+                    const contact = contacts.find(c => c.id === id);
+                    if (contact) {
+                        selectContact(contact);
+                    }
                 }
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchParams, contacts.length]); // Use length as a more stable dependency
+    }, [searchParams, contacts.length]);
 
     const fetchContacts = async () => {
         try {
@@ -307,9 +310,16 @@ const InboxPage: React.FC = () => {
     };
 
     const selectContact = async (contact: ExtendedInboxContact) => {
+        // Prevent double selecting
+        if (selectedContactRef.current === contact.id && selectedContact) return;
+
         selectedContactRef.current = contact.id;
         setSelectedContact(contact);
-        setSearchParams({ contactId: String(contact.id) });
+
+        // Only update search params if they actually changed
+        if (searchParams.get('contactId') !== String(contact.id)) {
+            setSearchParams({ contactId: String(contact.id) }, { replace: true });
+        }
 
         // Clear state immediately to avoid showing old data
         setActiveOrder(null);
@@ -552,7 +562,7 @@ const InboxPage: React.FC = () => {
                             </div>
                         )}
                     </div>
-                    <div style={{ height: 'calc(100% - 140px)', overflowY: 'auto', padding: isMobile ? '0 12px' : 0 }}>
+                    <div style={{ height: 'calc(100% - 140px)', overflowY: 'auto', padding: isMobile ? '0 12px' : 0, position: 'relative' }}>
                         {isLoadingContacts && contacts.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
                         ) : contacts.length === 0 ? (
