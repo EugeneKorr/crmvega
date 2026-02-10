@@ -22,6 +22,7 @@ import orderMessagesRoutes from './routes/orderMessages';
 import tagsRoutes from './routes/tags';
 import uploadRoutes from './routes/upload';
 import errorBotRoutes from './routes/errorBot';
+import json5Parser from './middleware/json5Parser';
 
 dotenv.config();
 
@@ -91,8 +92,7 @@ const corsOptions: cors.CorsOptions = {
 app.use(cors(corsOptions));
 // Custom JSON parser to handle Bubble's invalid JSON (unquoted yes/no)
 app.use(express.text({ type: 'application/json' }));
-// @ts-ignore
-app.use(require('./middleware/json5Parser')); // Use JSON5 for loose parsing
+app.use(json5Parser); // Use JSON5 for loose parsing
 
 // Сохраняем io в app для доступа из routes
 app.set('io', io);
