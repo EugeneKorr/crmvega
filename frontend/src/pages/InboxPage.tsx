@@ -229,7 +229,7 @@ const InboxPage: React.FC = () => {
             )}
 
             {(isMobile && selectedContact || !isMobile) && (
-                <Content style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
+                <Content style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: '#fff' }}>
                     {selectedContact ? (
                         <>
                             <div style={{
