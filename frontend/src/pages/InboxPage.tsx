@@ -65,7 +65,7 @@ const InboxPage: React.FC = () => {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
 
-    // Use useOrderChat ONLY for sending messages (optimistic UI)
+    // Use useOrderChat ONLY for sending messages (optimistic UI handled here)
     const { sendMessage: hookSendMessage } = useOrderChat(activeOrder?.id || 0, activeOrder?.main_id, selectedContact?.id);
 
     // Initial load & URL params
@@ -122,6 +122,14 @@ const InboxPage: React.FC = () => {
                 (payload) => {
                     const newMessage = payload.new as Message;
                     setMessages(prev => {
+                        // Replace optimistic message or add new
+                        const optimisticIndex = prev.findIndex(m => String(m.id).startsWith('temp-'));
+                        if (optimisticIndex !== -1) {
+                            // Replace optimistic with real
+                            const updated = [...prev];
+                            updated[optimisticIndex] = newMessage;
+                            return updated;
+                        }
                         // Avoid duplicates
                         if (prev.some(m => m.id === newMessage.id)) return prev;
                         return [...prev, newMessage];
@@ -203,11 +211,10 @@ const InboxPage: React.FC = () => {
         try {
             if (!loadMore) {
                 setIsLoadingMessages(true);
-                isInitialLoadRef.current = true; // Mark as initial load
+                isInitialLoadRef.current = true;
             } else {
                 setLoadingMore(true);
-                isInitialLoadRef.current = false; // Not initial load
-                // Save current scroll height before loading
+                isInitialLoadRef.current = false;
                 if (messagesContainerRef.current) {
                     previousScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
                 }
@@ -219,11 +226,9 @@ const InboxPage: React.FC = () => {
 
             if (selectedContactRef.current === contactId) {
                 if (loadMore) {
-                    // Prepend old messages at the TOP
                     setMessages(prev => [...data.messages, ...prev]);
                     setHasMore(data.messages.length >= limit);
 
-                    // Restore scroll position after DOM updates
                     setTimeout(() => {
                         if (messagesContainerRef.current) {
                             const newScrollHeight = messagesContainerRef.current.scrollHeight;
@@ -239,10 +244,6 @@ const InboxPage: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Error fetching messages:', error);
-            if (error.response) {
-                console.error('Server Error Details:', error.response.data);
-                antMessage.error(`Ошибка загрузки: ${JSON.stringify(error.response.data)}`);
-            }
         } finally {
             if (selectedContactRef.current === contactId) {
                 setIsLoadingMessages(false);
@@ -263,7 +264,7 @@ const InboxPage: React.FC = () => {
             setSearchParams({ contactId: String(contact.id) }, { replace: true });
         }
 
-        // Clear state immediately to avoid showing old data
+        // Clear state immediately
         setActiveOrder(null);
         setMessages([]);
         setTotalMessages(0);
@@ -321,8 +322,26 @@ const InboxPage: React.FC = () => {
 
     const handleSendMessage = async (text: string) => {
         if (!activeOrder?.id) return;
-        await hookSendMessage(text, 'client');
+
+        // Optimistic UI: add message immediately
+        const optimisticMessage: Message = {
+            id: `temp-${Date.now()}` as any,
+            content: text,
+            author_type: 'manager',
+            message_type: 'text',
+            'Created Date': new Date().toISOString(),
+            is_read: true,
+            main_id: activeOrder.main_id,
+            manager_id: manager?.id,
+            lead_id: String(activeOrder.id),
+            status: 'pending' as any
+        };
+
+        setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
+
+        // Send via hook
+        await hookSendMessage(text, 'client');
     };
 
     const handleSendVoice = async (voice: Blob, duration: number) => {
