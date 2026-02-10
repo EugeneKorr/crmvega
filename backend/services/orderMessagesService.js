@@ -230,9 +230,8 @@ class OrderMessagesService {
                 message_id_tg: telegramMessageId,
                 reply_to_mess_id_tg: replyToMessageId,
                 status: telegramMessageId ? 'delivered' : 'error',
-                attachment_url: fileUrl,
-                attachment_type: file.mimetype.startsWith('image') ? 'image' : 'file',
-                attachment_name: originalName
+                file_url: fileUrl,
+                file_name: originalName
             })
             .select('*, sender:managers!manager_id(id, name, email)')
             .single();
@@ -316,8 +315,7 @@ class OrderMessagesService {
                 message_id_tg: telegramMessageId,
                 reply_to_mess_id_tg: replyToMessageId,
                 status: telegramMessageId ? 'delivered' : 'error',
-                attachment_url: fileUrl,
-                attachment_type: 'voice',
+                file_url: fileUrl,
                 voice_duration: duration
             })
             .select('*, sender:managers!manager_id(id, name, email)')
