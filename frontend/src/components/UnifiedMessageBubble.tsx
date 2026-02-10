@@ -187,7 +187,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                             {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                         </div>
                         <span style={{ fontSize: 12 }}>
-                            {msg.voice_duration ? formatTime(new Date(0).setSeconds(msg.voice_duration || 0)).substr(3) : '0:00'}
+                            {msg.voice_duration ? new Date(msg.voice_duration * 1000).toISOString().substr(14, 5) : '0:00'}
                         </span>
                         <audio ref={audioRef} src={effectiveFileUrl} onEnded={() => setIsPlaying(false)} style={{ display: 'none' }} />
                     </div>
