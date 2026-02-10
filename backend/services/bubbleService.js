@@ -124,7 +124,7 @@ class BubbleService {
             order_status: order_status || null,
             file_url: autoFileUrl,
             file_name: finalFileName,
-            telegram_user_id: telegram_user_id || payload['Telegram User ID'] || payload['telegram_id'] || null,
+            telegram_user_id: this.sanitizeNumeric(telegram_user_id || payload['Telegram User ID'] || payload['Telegram_User_ID'] || payload['telegram_id'] || payload['user_id']),
             ...(finalReactions !== undefined && { reactions: finalReactions }),
         };
 
