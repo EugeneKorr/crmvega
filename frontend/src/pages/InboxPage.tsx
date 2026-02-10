@@ -45,7 +45,9 @@ const InboxPage: React.FC = () => {
     const [contacts, setContacts] = useState<ExtendedInboxContact[]>([]);
     const [selectedContact, setSelectedContact] = useState<ExtendedInboxContact | null>(null);
     const [activeOrder, setActiveOrder] = useState<Order | null>(null); // Активная заявка контакта
+    const [messages, setMessages] = useState<Message[]>([]);
     const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+    const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sending, setSending] = useState(false);
 
@@ -55,14 +57,12 @@ const InboxPage: React.FC = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const selectedContactRef = useRef<number | null>(null);
 
-    const {
-        messages,
-        loading: isLoadingMessages,
-        loadingMore,
-        hasMore,
-        sendMessage: hookSendMessage,
-        fetchTimeline
-    } = useOrderChat(activeOrder?.id || 0, activeOrder?.main_id, selectedContact?.id);
+    const [totalMessages, setTotalMessages] = useState(0);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+
+    // Use useOrderChat ONLY for sending messages (optimistic UI)
+    const { sendMessage: hookSendMessage } = useOrderChat(activeOrder?.id || 0, activeOrder?.main_id, selectedContact?.id);
 
     // Initial load & URL params
     useEffect(() => {
@@ -166,7 +166,38 @@ const InboxPage: React.FC = () => {
     };
 
     const fetchMessages = async (contactId: number, loadMore = false) => {
-        // Handled by useOrderChat hook
+        try {
+            if (!loadMore) {
+                setIsLoadingMessages(true);
+            } else {
+                setLoadingMore(true);
+            }
+
+            const limit = 50;
+            const offset = loadMore ? messages.length : 0;
+            const data = await contactMessagesAPI.getByContactId(contactId, { limit, offset });
+
+            if (selectedContactRef.current === contactId) {
+                if (loadMore) {
+                    setMessages(prev => [...prev, ...data.messages]);
+                } else {
+                    setMessages(data.messages);
+                    setTotalMessages(data.total);
+                    setHasMore(data.messages.length >= limit);
+                }
+            }
+        } catch (error: any) {
+            console.error('Error fetching messages:', error);
+            if (error.response) {
+                console.error('Server Error Details:', error.response.data);
+                antMessage.error(`Ошибка загрузки: ${JSON.stringify(error.response.data)}`);
+            }
+        } finally {
+            if (selectedContactRef.current === contactId) {
+                setIsLoadingMessages(false);
+                setLoadingMore(false);
+            }
+        }
     };
 
     const selectContact = async (contact: ExtendedInboxContact) => {
@@ -183,6 +214,8 @@ const InboxPage: React.FC = () => {
 
         // Clear state immediately to avoid showing old data
         setActiveOrder(null);
+        setMessages([]);
+        setTotalMessages(0);
 
         fetchMessages(contact.id);
 
@@ -545,11 +578,11 @@ const InboxPage: React.FC = () => {
                                     <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
                                 ) : (
                                     <>
-                                        {hasMore && (
+                                        {messages.length < totalMessages && hasMore && (
                                             <div style={{ textAlign: 'center', marginBottom: 16 }}>
                                                 <Button
                                                     size="small"
-                                                    onClick={() => selectedContact && fetchTimeline(true)}
+                                                    onClick={() => selectedContact && fetchMessages(selectedContact.id, true)}
                                                     loading={loadingMore}
                                                 >
                                                     Загрузить предыдущие
