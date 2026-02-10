@@ -10,6 +10,13 @@ interface TimelineMessage extends Message {
     sort_date?: string;
     is_system?: boolean;
     display_author?: string;
+    isPending?: boolean;
+    error?: boolean;
+    reply_to?: {
+        id: number;
+        content: string;
+        author_name?: string;
+    };
 }
 
 export const useOrderChat = (orderId: number, mainId?: string, contactId?: number) => {
@@ -74,7 +81,32 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
 
     // Actions
     const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number) => {
-        setSending(true);
+        const tempId = Date.now();
+        const now = new Date().toISOString();
+
+        // 1. Create Optimistic Message
+        const optimisticMsg: TimelineMessage = {
+            id: tempId,
+            content: content || (file ? `Файл: ${file.name}` : voice ? 'Голосовое сообщение' : ''),
+            created_at: now,
+            sort_date: now,
+            source_type: mode,
+            display_author: mode === 'internal' ? (manager?.name || 'Вы') : 'Менеджер',
+            author_type: mode === 'internal' ? 'manager' : 'user',
+            isPending: true,
+            lead_id: String(orderId),
+            file_url: file ? URL.createObjectURL(file) : undefined,
+            reply_to: replyTo ? {
+                id: replyTo.id,
+                content: replyTo.content,
+                author_name: replyTo.display_author
+            } : undefined
+        };
+
+        // 2. Add to UI immediately
+        setMessages(prev => [optimisticMsg, ...prev]);
+        setReplyTo(null);
+
         try {
             if (mode === 'client') {
                 const replyId = replyTo && 'message_id_tg' in replyTo ? replyTo.message_id_tg as number : undefined;
@@ -98,15 +130,14 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                     await orderMessagesAPI.sendInternalMessage(orderId, content, replyId);
                 }
             }
-            setReplyTo(null);
-            // Scroll to bottom typically handled by new message socket event
+            // Success: the real message will arrive via socket and deduplicate tempId
             return true;
         } catch (error) {
             console.error('Send error:', error);
+            // Mark as error
+            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isPending: false, error: true } : m));
             antMessage.error('Ошибка отправки');
             return false;
-        } finally {
-            setSending(false);
         }
     };
 
@@ -142,8 +173,12 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
 
         const handleNewMessage = (msg: TimelineMessage) => {
             setMessages(prev => {
+                // Deduplication: check if message ID already exists or content matches a pending message
                 if (prev.some(m => m.id === msg.id && m.source_type === msg.source_type)) return prev;
-                return [msg, ...prev]; // Newest first
+
+                // If it's our own message coming back, remove the pending one
+                const filtered = prev.filter(m => !(m.isPending && m.content === msg.content && m.source_type === msg.source_type));
+                return [msg, ...filtered]; // Newest first
             });
         };
 
@@ -174,12 +209,12 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
 
         socket.on('new_client_message', handleClientMsg);
         socket.on('new_internal_message', handleInternalMsg);
-        socket.on('new_message_bubble', (msg) => {
+        socket.on('new_message_bubble', (msg: any) => {
             if (mainId && String(msg.main_id) === String(mainId)) {
                 handleNewMessage({ ...msg, source_type: 'client', sort_date: msg['Created Date'], display_author: 'Клиент' });
             }
         });
-        socket.on('message_updated', handleUpdate);
+        socket.on('message_updated', (msg: any) => handleUpdate(msg));
 
         return () => {
             socket.emit('leave_order', orderId.toString());

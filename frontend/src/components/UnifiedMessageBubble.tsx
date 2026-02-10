@@ -11,11 +11,15 @@ import {
     RollbackOutlined,
     FileOutlined,
     DownloadOutlined,
-    CopyOutlined
+    CopyOutlined,
+    ClockCircleOutlined,
+    ExclamationCircleFilled
 } from '@ant-design/icons';
-import { Image } from 'antd';
+import { Image, Typography } from 'antd';
 import { isClientMessage, getAvatarColor, formatTime, linkifyText } from '../utils/chatUtils';
 import { Message } from '../types';
+
+const { Text } = Typography;
 
 interface UnifiedMessageBubbleProps {
     msg: Message;
@@ -23,9 +27,11 @@ interface UnifiedMessageBubbleProps {
     onReply?: (msg: Message) => void;
     onAddReaction?: (msg: Message, emoji: string) => void;
     replyMessage?: Message;
+    isPending?: boolean;
+    error?: boolean;
     alignment?: 'left' | 'right';
     variant?: 'client' | 'internal';
-    onRecall?: (msg: Message) => void; // Optional recall support
+    onRecall?: (msg: Message) => void;
 }
 
 const DEFAULT_REACTIONS = ['👍', '❤️', '🔥', '😱', '😢', '🙏', '👌', '😇'];
@@ -37,22 +43,22 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     onAddReaction,
     replyMessage,
     alignment,
-    variant = 'client'
+    variant = 'client',
+    isPending: propIsPending,
+    error: propError
 }) => {
+    const isPending = propIsPending || (msg as any).isPending;
+    const isError = propError || (msg as any).error;
+
     const isFromClient = isClientMessage(msg.author_type);
     const align = alignment || (isFromClient ? 'left' : 'right');
     const isRight = align === 'right';
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
-
-    // Context Menu / Action State
     const [menuOpen, setMenuOpen] = useState(false);
-
-    // Long Press Refs
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const isLongPress = useRef(false);
 
-    // Determine colors
     const getBubbleStyles = () => {
         if (msg.message_type === 'system') {
             return {
@@ -68,45 +74,20 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
             };
         }
 
-        if (variant === 'internal') {
-            if (isRight) {
-                return {
-                    background: 'linear-gradient(135deg, #722ed1 0%, #531dab 100%)',
-                    color: 'white',
-                    borderRadius: '16px 4px 16px 16px',
-                    linkColor: 'rgba(255,255,255,0.9)'
-                };
-            } else {
-                return {
-                    background: 'linear-gradient(135deg, #13c2c2 0%, #08979c 100%)',
-                    color: 'white',
-                    borderRadius: '4px 16px 16px 16px',
-                    linkColor: '#e6fffb'
-                };
-            }
-        } else {
-            if (isRight) {
-                return {
-                    background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
-                    color: 'white',
-                    borderRadius: '16px 4px 16px 16px',
-                    linkColor: 'rgba(255,255,255,0.9)'
-                };
-            } else {
-                return {
-                    background: '#ffffff',
-                    color: 'rgba(0,0,0,0.85)',
-                    borderRadius: '4px 16px 16px 16px',
-                    border: '1px solid #f0f0f0',
-                    linkColor: '#1890ff'
-                };
-            }
-        }
+        const baseStyles = variant === 'internal'
+            ? (isRight ? { background: 'linear-gradient(135deg, #722ed1 0%, #531dab 100%)', color: 'white', borderRadius: '16px 4px 16px 16px' } : { background: 'linear-gradient(135deg, #13c2c2 0%, #08979c 100%)', color: 'white', borderRadius: '4px 16px 16px 16px' })
+            : (isRight ? { background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)', color: 'white', borderRadius: '16px 4px 16px 16px' } : { background: '#ffffff', color: 'rgba(0,0,0,0.85)', borderRadius: '4px 16px 16px 16px', border: '1px solid #f0f0f0' });
+
+        return {
+            ...baseStyles,
+            opacity: isPending ? 0.6 : 1,
+            transition: 'opacity 0.3s ease',
+            linkColor: isRight ? 'rgba(255,255,255,0.9)' : '#1890ff'
+        };
     };
 
     const styles = getBubbleStyles();
 
-    // --- Actions ---
     const handleCopy = () => {
         if (msg.content) {
             navigator.clipboard.writeText(msg.content)
@@ -121,29 +102,6 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
         setMenuOpen(false);
     };
 
-    // --- Interaction Handlers (Long Press & Right Click) ---
-    const handleTouchStart = () => {
-        isLongPress.current = false;
-        timerRef.current = setTimeout(() => {
-            isLongPress.current = true;
-            setMenuOpen(true);
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 500);
-    };
-
-    const handleTouchEnd = () => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    };
-
-    const handleContextMenu = (e: React.MouseEvent) => {
-        e.preventDefault();
-        setMenuOpen(true);
-    };
-
-    // --- Render Helpers ---
     const toggleAudio = () => {
         if (!audioRef.current) return;
         if (isPlaying) {
@@ -191,13 +149,11 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
         </div>
     );
 
-    // Helper to download file without opening new tab with Bubble URL in address bar on mobile
     const handleDownload = async (url: string, filename: string) => {
         try {
             const response = await fetch(url);
             const blob = await response.blob();
             const blobUrl = window.URL.createObjectURL(blob);
-
             const link = document.createElement('a');
             link.href = blobUrl;
             link.download = filename || 'download';
@@ -206,15 +162,11 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
             document.body.removeChild(link);
             window.URL.revokeObjectURL(blobUrl);
         } catch (error) {
-            console.error('Download failed', error);
-            // Fallback
-            antMessage.loading({ content: 'Opening file...', key: 'downloading', duration: 1 });
             window.open(url, '_blank');
         }
     };
 
     const renderAttachment = () => {
-        // Fallback for files sent as plain links in content (common in Bubble)
         const effectiveFileUrl = msg.file_url || (
             (/^https?:\/\/[^\s]+$/i.test(msg.content?.trim() || ''))
                 ? msg.content?.trim()
@@ -223,10 +175,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
 
         if (effectiveFileUrl) {
             const isImage = effectiveFileUrl.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i) || (effectiveFileUrl.includes('bubble.io') && !effectiveFileUrl.includes('.') && !msg.file_name);
-            const isVideo = effectiveFileUrl.match(/\.(mp4|webm|mov)$/i);
-            const isPdf = effectiveFileUrl.match(/\.pdf$/i);
             const isVoice = msg.message_type === 'voice' || effectiveFileUrl.endsWith('.ogg') || effectiveFileUrl.endsWith('.wav');
-
             const fileName = msg.file_name || 'file';
 
             if (isVoice) {
@@ -235,15 +184,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                         <div onClick={(e) => { e.stopPropagation(); toggleAudio(); }} style={{ cursor: 'pointer', fontSize: 24 }}>
                             {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                         </div>
-                        <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.3)', borderRadius: 2 }}>
-                            <div style={{ width: isPlaying ? '50%' : '0%', height: '100%', background: 'currentColor', transition: 'width 0.2s' }} />
-                        </div>
-                        <audio
-                            ref={audioRef}
-                            src={effectiveFileUrl}
-                            onEnded={() => setIsPlaying(false)}
-                            style={{ display: 'none' }}
-                        />
+                        <audio ref={audioRef} src={effectiveFileUrl} onEnded={() => setIsPlaying(false)} style={{ display: 'none' }} />
                         {msg.voice_duration && <span style={{ fontSize: 11 }}>{formatTime(new Date(0).setSeconds(msg.voice_duration || 0)).substr(3)}</span>}
                     </div>
                 );
@@ -252,61 +193,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
             if (isImage) {
                 return (
                     <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
-                        <Image
-                            width="100%"
-                            src={effectiveFileUrl}
-                            alt="attachment"
-                            style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
-                            preview={{ mask: false }}
-                        />
-                    </div>
-                );
-            }
-
-            if (isVideo) {
-                return (
-                    <div style={{ marginTop: 4 }}>
-                        <video src={effectiveFileUrl} controls style={{ maxWidth: '100%', borderRadius: 8 }} />
-                    </div>
-                );
-            }
-
-            if (isPdf) {
-                return (
-                    <div
-                        style={{ marginTop: 8, cursor: 'pointer' }}
-                        onClick={(e) => { e.stopPropagation(); handleDownload(effectiveFileUrl!, fileName); }}
-                    >
-                        <div style={{
-                            width: '240px',
-                            border: '1px solid rgba(0,0,0,0.1)',
-                            borderRadius: 8,
-                            backgroundColor: '#f5f5f5',
-                            display: 'flex',
-                            alignItems: 'center',
-                            padding: '12px',
-                            gap: 12,
-                            color: '#333'
-                        }}>
-                            <div style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 8,
-                                background: '#ff4d4f',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: 'white'
-                            }}>
-                                <FileOutlined style={{ fontSize: 20 }} />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 500, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {msg.file_name || 'Документ PDF'}
-                                </div>
-                                <div style={{ fontSize: 11, color: '#8c8c8c' }}>Скачать PDF</div>
-                            </div>
-                        </div>
+                        <Image width="100%" src={effectiveFileUrl} alt="attachment" style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }} preview={{ mask: false }} />
                     </div>
                 );
             }
@@ -330,11 +217,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
             if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
                 const parsed = JSON.parse(content);
                 if (parsed && (parsed.text !== undefined || parsed.buttons !== undefined)) {
-                    return {
-                        text: parsed.text || '',
-                        buttons: parsed.buttons || [],
-                        isJson: true
-                    };
+                    return { text: parsed.text || '', buttons: parsed.buttons || [], isJson: true };
                 }
             }
         } catch (e) { }
@@ -342,10 +225,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     };
 
     const { text: rawText, buttons: displayButtons } = msg.content ? parseContent(msg.content) : { text: '', buttons: [] };
-
-    // Auto-detect if rawText is just a file link to avoid duplication
-    const isPureFileLink = /^https?:\/\/[^\s]+$/i.test(rawText.trim()) && (msg.file_url || rawText.trim().match(/\.(jpg|jpeg|png|gif|webp|pdf|mp4|webm|mov|ogg|wav)$/i));
-    const displayText = isPureFileLink ? '' : rawText;
+    const displayText = rawText;
 
     return (
         <div style={{
@@ -354,155 +234,67 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
             alignItems: isRight ? 'flex-end' : 'flex-start',
             marginBottom: 16,
             position: 'relative',
-            paddingLeft: isRight ? 48 : 0,
-            paddingRight: !isRight ? 48 : 0,
             width: '100%'
         }}>
             {replyMessage && (
-                <div style={{
-                    fontSize: 12,
-                    color: '#8c8c8c',
-                    marginBottom: 4,
-                    marginLeft: isRight ? 0 : 4,
-                    marginRight: isRight ? 4 : 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    maxWidth: '80%',
-                    cursor: 'pointer'
-                }}>
+                <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, maxWidth: '80%' }}>
                     <RollbackOutlined style={{ fontSize: 10 }} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {(() => {
-                            const repContent = replyMessage.content ? parseContent(replyMessage.content).text : '';
-                            return repContent || 'Вложение';
-                        })()}
+                        {replyMessage.content ? parseContent(replyMessage.content).text : 'Вложение'}
                     </span>
                 </div>
             )}
 
             <div style={{ display: 'flex', flexDirection: isRight ? 'row-reverse' : 'row', maxWidth: '100%', gap: 8 }}>
                 <Avatar
-                    style={{
-                        backgroundColor: getAvatarColor(msg.author_type),
-                        flexShrink: 0,
-                        marginTop: 'auto'
-                    }}
+                    style={{ backgroundColor: getAvatarColor(msg.author_type), flexShrink: 0, marginTop: 'auto' }}
                     icon={msg.author_type === 'customer' ? <UserOutlined /> : undefined}
                 >
                     {msg.author_type && msg.author_type !== 'customer' ? msg.author_type.charAt(0).toUpperCase() : <UserOutlined />}
                 </Avatar>
 
-                {/* Bubble Container */}
-                <div
-                    style={{
-                        ...styles,
-                        padding: '10px 14px',
-                        minWidth: 60,
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                        position: 'relative',
-                        touchAction: 'manipulation'
-                    }}
-                    onDoubleClick={() => onReply && onReply(msg)}
-                >
+                <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
                     {!isFromClient && (
-                        <div style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            opacity: 0.9,
-                            marginBottom: 2,
-                            textAlign: isRight ? 'right' : 'left',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                        }}>
-                            {(() => {
-                                // Prioritize linked manager profile name, fallback to snapshot name
-                                const rawName = msg.sender?.name || msg.user || 'Оператор';
-                                return rawName?.includes('@') ? rawName.split('@')[0] : rawName;
-                            })()}
+                        <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
+                            {msg.sender?.name || msg.user || 'Оператор'}
                         </div>
                     )}
 
                     {renderAttachment()}
 
                     {displayText && (
-                        <div style={{
-                            fontSize: 14,
-                            lineHeight: '1.5',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            marginTop: msg.file_url ? 8 : 0
-                        }}>
+                        <div style={{ fontSize: 14, lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: msg.file_url ? 8 : 0 }}>
                             {linkifyText(displayText)}
                         </div>
                     )}
 
-                    {displayButtons && displayButtons.length > 0 && (
-                        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4, opacity: 0.8 }}>
-                            {displayButtons.map((btn: any, idx: number) => (
-                                <div key={idx} style={{
-                                    fontSize: 10,
-                                    padding: '2px 8px',
-                                    borderRadius: 4,
-                                    background: 'rgba(0,0,0,0.1)',
-                                    border: '1px solid rgba(0,0,0,0.1)'
-                                }}>
-                                    [{btn.text}]
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        alignItems: 'center',
-                        marginTop: 4,
-                        gap: 4,
-                        opacity: 0.7,
-                        fontSize: 10
-                    }}>
-                        {/* Reactions Display */}
-                        {msg.reactions && msg.reactions.length > 0 && (
-                            <div style={{ display: 'flex', gap: 2, marginRight: 4 }}>
-                                {msg.reactions.map((r, i) => (
-                                    <span key={i}>{typeof r === 'string' ? r : r.emoji || r}</span>
-                                ))}
-                            </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 4, opacity: 0.7, fontSize: 10 }}>
+                        {isError ? (
+                            <span style={{ color: '#ff4d4f', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <ExclamationCircleFilled /> Ошибка
+                            </span>
+                        ) : (
+                            <>
+                                {formatTime(msg['Created Date'] || msg.created_at)}
+                                {isPending ? (
+                                    <ClockCircleOutlined style={{ animation: 'spin 2s linear infinite' }} />
+                                ) : (
+                                    isOwn && <span>✓</span>
+                                )}
+                            </>
                         )}
-
-                        {/* Date & Status */}
-                        {formatTime(msg['Created Date'] || msg.created_at)}
-                        {isOwn && (
-                            <span>✓</span>
-                        )}
-
-                        {/* ACTIONS MENU TRIGGER */}
-                        <Popover
-                            content={contentMenu}
-                            trigger="click"
-                            open={menuOpen}
-                            onOpenChange={setMenuOpen}
-                            overlayInnerStyle={{ padding: 8, borderRadius: 8 }}
-                            placement="bottom"
-                        >
-                            <div
-                                style={{
-                                    cursor: 'pointer',
-                                    marginLeft: 4,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    opacity: 0.6,
-                                    padding: '0 4px'
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                ⋮
-                            </div>
-                        </Popover>
                     </div>
+
+                    <Popover content={contentMenu} trigger="click" open={menuOpen} onOpenChange={setMenuOpen} placement="bottom">
+                        <div style={{ cursor: 'pointer', position: 'absolute', right: isRight ? -20 : 'auto', left: !isRight ? -20 : 'auto', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>
+                            ⋮
+                        </div>
+                    </Popover>
                 </div>
             </div>
+            <style>{`
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            `}</style>
         </div>
     );
 };
