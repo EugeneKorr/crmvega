@@ -14,6 +14,7 @@ interface UnifiedContactChatProps {
     isMobile?: boolean;
     showHeader?: boolean;
     contactName?: string;
+    style?: React.CSSProperties;
 }
 
 export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
@@ -21,7 +22,8 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     activeOrder,
     isMobile = false,
     showHeader = false,
-    contactName
+    contactName,
+    style
 }) => {
     const { manager } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
@@ -290,7 +292,14 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     };
 
     return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+        <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#fff',
+            minHeight: 0,
+            ...style
+        }}>
             {showHeader && (
                 <div style={{ padding: isMobile ? '12px 16px' : '16px 24px', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{contactName || 'Чат с клиентом'}</div>

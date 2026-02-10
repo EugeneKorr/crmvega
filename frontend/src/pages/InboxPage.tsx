@@ -27,6 +27,7 @@ import { UnifiedContactChat } from '../components/UnifiedContactChat';
 const { Content, Sider } = Layout;
 const { Text, Title } = Typography;
 
+
 interface ExtendedInboxContact extends InboxContact {
     telegram_user_id?: number | string;
     last_message_at?: string;
@@ -267,11 +268,14 @@ const InboxPage: React.FC = () => {
                                     )}
                                 </div>
                             </div>
-                            <UnifiedContactChat
-                                contactId={selectedContact.id}
-                                activeOrder={activeOrder}
-                                isMobile={isMobile}
-                            />
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                <UnifiedContactChat
+                                    contactId={selectedContact.id}
+                                    activeOrder={activeOrder}
+                                    isMobile={isMobile}
+                                    style={{ flex: 1 }}
+                                />
+                            </div>
                         </>
                     ) : (
                         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f5f5f5' }}>
