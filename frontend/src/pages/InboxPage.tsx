@@ -150,16 +150,16 @@ const InboxPage: React.FC = () => {
     const isMobile = !screens.md;
 
     return (
-        <Layout style={{ height: 'calc(100vh - 64px)', background: '#fff', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', height: 'calc(100vh - 64px)', background: '#fff', overflow: 'hidden', width: '100%' }}>
             {(!isMobile || !selectedContact) && (
-                <Sider
-                    width={isMobile ? '100%' : 350}
-                    theme="light"
+                <div
                     style={{
+                        width: isMobile ? '100%' : 350,
                         borderRight: '1px solid #f0f0f0',
                         display: 'flex',
                         flexDirection: 'column',
                         height: '100%',
+                        flexShrink: 0
                     }}
                 >
                     <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
@@ -225,16 +225,16 @@ const InboxPage: React.FC = () => {
                             />
                         )}
                     </div>
-                </Sider>
+                </div>
             )}
 
             {(isMobile && selectedContact || !isMobile) && (
-                <Content style={{
+                <div style={{
                     display: 'flex',
                     flexDirection: 'column',
                     flex: 1,
                     height: '100%',
-                    minHeight: 0,
+                    minWidth: 0,
                     background: '#fff',
                     position: 'relative'
                 }}>
@@ -289,9 +289,9 @@ const InboxPage: React.FC = () => {
                             <Empty description={isMobile ? "Выберите диалог" : "Выберите диалог из списка слева"} />
                         </div>
                     )}
-                </Content>
+                </div>
             )}
-        </Layout>
+        </div>
     );
 };
 
