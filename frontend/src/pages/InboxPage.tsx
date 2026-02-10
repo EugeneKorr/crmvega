@@ -55,7 +55,10 @@ const InboxPage: React.FC = () => {
     const [filterStages, setFilterStages] = useState<string[]>([]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
     const selectedContactRef = useRef<number | null>(null);
+    const previousScrollHeightRef = useRef<number>(0);
+    const isInitialLoadRef = useRef<boolean>(true);
 
     const [totalMessages, setTotalMessages] = useState(0);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -169,8 +172,14 @@ const InboxPage: React.FC = () => {
         try {
             if (!loadMore) {
                 setIsLoadingMessages(true);
+                isInitialLoadRef.current = true; // Mark as initial load
             } else {
                 setLoadingMore(true);
+                isInitialLoadRef.current = false; // Not initial load
+                // Save current scroll height before loading
+                if (messagesContainerRef.current) {
+                    previousScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
+                }
             }
 
             const limit = 50;
@@ -179,7 +188,18 @@ const InboxPage: React.FC = () => {
 
             if (selectedContactRef.current === contactId) {
                 if (loadMore) {
-                    setMessages(prev => [...prev, ...data.messages]);
+                    // Prepend old messages at the TOP
+                    setMessages(prev => [...data.messages, ...prev]);
+                    setHasMore(data.messages.length >= limit);
+
+                    // Restore scroll position after DOM updates
+                    setTimeout(() => {
+                        if (messagesContainerRef.current) {
+                            const newScrollHeight = messagesContainerRef.current.scrollHeight;
+                            const scrollDiff = newScrollHeight - previousScrollHeightRef.current;
+                            messagesContainerRef.current.scrollTop = scrollDiff;
+                        }
+                    }, 0);
                 } else {
                     setMessages(data.messages);
                     setTotalMessages(data.total);
@@ -299,12 +319,21 @@ const InboxPage: React.FC = () => {
         }, 100);
     };
 
-    // Auto-scroll to bottom when messages load or new message arrives
+    // Auto-scroll to bottom ONLY on initial load or new messages (not when loading old)
     useEffect(() => {
-        if (messages.length > 0 && !isLoadingMessages) {
+        if (messages.length > 0 && !isLoadingMessages && !loadingMore && isInitialLoadRef.current) {
             scrollToBottom(true);
+            isInitialLoadRef.current = false; // Reset after first scroll
         }
-    }, [messages.length, isLoadingMessages]);
+    }, [messages.length, isLoadingMessages, loadingMore]);
+
+    // Infinite scroll: load more when scrolling near top
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const container = e.currentTarget;
+        if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages && selectedContact) {
+            fetchMessages(selectedContact.id, true);
+        }
+    };
 
     const showList = !isMobile || (isMobile && !selectedContact);
     const showChat = !isMobile || (isMobile && selectedContact);
@@ -566,27 +595,24 @@ const InboxPage: React.FC = () => {
                             </div>
 
                             {/* Messages Area */}
-                            <div style={{
-                                flex: 1,
-                                padding: isMobile ? '12px' : '24px',
-                                overflowY: 'auto',
-                                background: '#f5f5f5',
-                                backgroundImage: 'url("https://gw.alipayobjects.com/zos/rmsportal/FfdJeJRQWjEeGTpqgBKj.png")', // Subtle pattern
-                                backgroundBlendMode: 'overlay',
-                            }}>
+                            <div
+                                ref={messagesContainerRef}
+                                onScroll={handleScroll}
+                                style={{
+                                    flex: 1,
+                                    padding: isMobile ? '12px' : '24px',
+                                    overflowY: 'auto',
+                                    background: '#f5f5f5',
+                                    backgroundImage: 'url("https://gw.alipayobjects.com/zos/rmsportal/FfdJeJRQWjEeGTpqgBKj.png")', // Subtle pattern
+                                    backgroundBlendMode: 'overlay',
+                                }}>
                                 {isLoadingMessages ? (
                                     <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
                                 ) : (
                                     <>
-                                        {messages.length < totalMessages && hasMore && (
+                                        {loadingMore && (
                                             <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                                                <Button
-                                                    size="small"
-                                                    onClick={() => selectedContact && fetchMessages(selectedContact.id, true)}
-                                                    loading={loadingMore}
-                                                >
-                                                    Загрузить предыдущие
-                                                </Button>
+                                                <Spin size="small" />
                                             </div>
                                         )}
                                         {messages.length === 0 ? (
