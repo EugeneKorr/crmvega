@@ -31,6 +31,7 @@ import { Contact, Order, Note, Message, NOTE_PRIORITIES, ORDER_STATUSES } from '
 import { contactsAPI, ordersAPI, notesAPI, contactMessagesAPI, orderMessagesAPI, messagesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { UnifiedMessageBubble } from '../components/UnifiedMessageBubble';
+import { UnifiedContactChat } from '../components/UnifiedContactChat';
 import { ChatInput } from '../components/ChatInput';
 import { formatDate } from '../utils/chatUtils';
 import io from 'socket.io-client';
@@ -549,56 +550,16 @@ const ContactDetailPage: React.FC = () => {
               label: 'Чат',
               children: (
                 <div style={{
-                  height: isMobile ? 'calc(100vh - 280px)' : '600px', // Fixed height for chat area
-                  display: 'flex', flexDirection: 'column',
+                  height: isMobile ? 'calc(100vh - 280px)' : '600px',
                   background: '#fff',
                   margin: isMobile ? 0 : 0
                 }}>
-                  <div
-                    ref={messagesContainerRef}
-                    style={{ flex: 1, overflowY: 'auto', padding: 16 }}
-                  >
-                    {messages.length === 0 ? (
-                      <Empty description="Нет сообщений" style={{ marginTop: 40 }} />
-                    ) : (
-                      // Keeping message logic same, just structure
-                      (() => {
-                        const groupedMessages: { date: string, msgs: Message[] }[] = [];
-                        messages.forEach(msg => {
-                          const dateKey = formatDate(msg['Created Date'] || msg.created_at);
-                          const lastGroup = groupedMessages[groupedMessages.length - 1];
-                          if (lastGroup && lastGroup.date === dateKey) {
-                            lastGroup.msgs.push(msg);
-                          } else {
-                            groupedMessages.push({ date: dateKey, msgs: [msg] });
-                          }
-                        });
-
-                        return groupedMessages.map(group => (
-                          <div key={group.date}>
-                            <div style={{ textAlign: 'center', margin: '16px 0', opacity: 0.5, fontSize: 12 }}>
-                              <span style={{ background: '#f5f5f5', padding: '4px 12px', borderRadius: 12 }}>{group.date}</span>
-                            </div>
-                            {group.msgs.map((msg, index) => (
-                              <UnifiedMessageBubble
-                                key={msg.id || index}
-                                msg={msg}
-                                isOwn={(msg.author_type || msg.sender_type) === 'manager'}
-                                variant="client"
-                                onAddReaction={handleAddReaction}
-                              />
-                            ))}
-                          </div>
-                        ));
-                      })()
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                  <ChatInput
-                    onSendText={handleSendText}
-                    onSendVoice={handleSendVoice}
-                    onSendFile={handleSendFile}
-                    sending={sending}
+                  <UnifiedContactChat
+                    contactId={parseInt(id!)}
+                    activeOrder={orders.find(o =>
+                      !['completed', 'scammer', 'client_rejected', 'lost'].includes(o.status)
+                    ) || orders[0]}
+                    isMobile={isMobile}
                   />
                 </div>
               )
