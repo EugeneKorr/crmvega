@@ -104,9 +104,9 @@ class OrderMessagesService {
                 // Send plain text (no MarkdownV2 to avoid escaping issues)
                 const telegramPayload = {
                     chat_id: telegramUserId,
-                    text: messageText || content || 'Сообщение',
-                    reply_markup: replyMarkup
+                    text: messageText || content || 'Сообщение'
                 };
+                if (replyMarkup) telegramPayload.reply_markup = replyMarkup;
                 if (replyToMessageId) telegramPayload.reply_to_message_id = replyToMessageId;
 
                 const response = await axios.post(
