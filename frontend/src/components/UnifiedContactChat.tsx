@@ -276,10 +276,15 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                     if (msg.reply_to_mess_id_tg) {
                         replyCtx = messages.find(m => String(m.message_id_tg) === String(msg.reply_to_mess_id_tg));
                     }
+                    if (!replyCtx && (msg.reply_to_id || msg.reply_to?.id)) {
+                        const rId = msg.reply_to_id || msg.reply_to?.id;
+                        replyCtx = messages.find(m => String(m.id) === String(rId));
+                    }
                     return (
                         <UnifiedMessageBubble
                             key={msg.id || index}
-                            msg={{ ...msg, replyContext: replyCtx }}
+                            msg={msg}
+                            replyMessage={replyCtx}
                             isOwn={isOwn}
                             variant="client"
                             onAddReaction={handleAddReaction}

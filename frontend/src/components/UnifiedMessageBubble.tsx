@@ -13,9 +13,10 @@ import {
     DownloadOutlined,
     CopyOutlined,
     ClockCircleOutlined,
-    ExclamationCircleFilled
+    ExclamationCircleFilled,
+    SmileOutlined
 } from '@ant-design/icons';
-import { Image, Typography } from 'antd';
+import { Image, Typography, Button as AntButton } from 'antd';
 import { isClientMessage, getAvatarColor, formatTime, linkifyText } from '../utils/chatUtils';
 import { Message } from '../types';
 
@@ -228,7 +229,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     const displayText = rawText;
 
     return (
-        <div style={{
+        <div className="message-bubble-container" style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: isRight ? 'flex-end' : 'flex-start',
@@ -247,7 +248,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
 
             <div style={{ display: 'flex', flexDirection: isRight ? 'row-reverse' : 'row', maxWidth: '100%', gap: 8 }}>
                 <Avatar
-                    style={{ backgroundColor: getAvatarColor(msg.author_type), flexShrink: 0, marginTop: 'auto' }}
+                    style={{ backgroundColor: getAvatarColor(msg.author_type), flexShrink: 0, marginTop: 'auto', border: '2px solid #fff' }}
                     icon={msg.author_type === 'customer' ? <UserOutlined /> : undefined}
                 >
                     {msg.author_type && msg.author_type !== 'customer' ? msg.author_type.charAt(0).toUpperCase() : <UserOutlined />}
@@ -259,6 +260,26 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                             {msg.sender?.name || msg.user || 'Оператор'}
                         </div>
                     )}
+
+                    <div className="message-hover-actions" style={{
+                        position: 'absolute',
+                        right: isRight ? 'auto' : -30,
+                        left: isRight ? -30 : 'auto',
+                        top: 0,
+                        display: 'none',
+                        flexDirection: 'column',
+                        gap: 4
+                    }}>
+                        {onReply && (
+                            <AntButton
+                                size="small"
+                                type="text"
+                                icon={<RollbackOutlined />}
+                                onClick={() => onReply(msg)}
+                                style={{ color: '#8c8c8c', background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: 28, height: 28, padding: 0 }}
+                            />
+                        )}
+                    </div>
 
                     {renderAttachment()}
 
@@ -279,21 +300,62 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                                 {isPending ? (
                                     <ClockCircleOutlined style={{ animation: 'spin 2s linear infinite' }} />
                                 ) : (
-                                    isOwn && <span>✓</span>
+                                    isOwn && <span style={{ color: isRight ? 'white' : '#1890ff' }}>✓</span>
                                 )}
                             </>
                         )}
                     </div>
 
                     <Popover content={contentMenu} trigger="click" open={menuOpen} onOpenChange={setMenuOpen} placement="bottom">
-                        <div style={{ cursor: 'pointer', position: 'absolute', right: isRight ? -20 : 'auto', left: !isRight ? -20 : 'auto', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>
+                        <div style={{
+                            cursor: 'pointer',
+                            position: 'absolute',
+                            right: isRight ? 'auto' : -24,
+                            left: isRight ? -24 : 'auto',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            opacity: 0.6,
+                            padding: '4px',
+                            fontSize: 16,
+                            color: '#8c8c8c'
+                        }}>
                             ⋮
                         </div>
                     </Popover>
                 </div>
             </div>
+
+            {msg.reactions && msg.reactions.length > 0 && (
+                <div style={{
+                    display: 'flex',
+                    gap: 4,
+                    marginTop: 4,
+                    marginLeft: isRight ? 0 : 48,
+                    marginRight: isRight ? 48 : 0,
+                    flexWrap: 'wrap'
+                }}>
+                    {msg.reactions.map((r, i) => (
+                        <div key={i} style={{
+                            background: '#fff',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 10,
+                            padding: '2px 6px',
+                            fontSize: 12,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2
+                        }}>
+                            {r.emoji}
+                        </div>
+                    ))}
+                </div>
+            )}
             <style>{`
                 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                .message-bubble-container:hover .message-hover-actions {
+                    display: flex !important;
+                }
             `}</style>
         </div>
     );

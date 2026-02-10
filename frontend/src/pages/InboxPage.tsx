@@ -150,7 +150,7 @@ const InboxPage: React.FC = () => {
     const isMobile = !screens.md;
 
     return (
-        <div style={{ display: 'flex', height: 'calc(100vh - 64px)', background: '#fff', overflow: 'hidden', width: '100%' }}>
+        <div style={{ display: 'flex', height: '100%', background: '#fff', overflow: 'hidden', width: '100%' }}>
             {(!isMobile || !selectedContact) && (
                 <div
                     style={{

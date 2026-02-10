@@ -305,7 +305,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       {!isMobile ? (
         <Sider
           trigger={null}
@@ -356,7 +356,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <Layout style={{
         marginLeft: !isMobile ? (collapsed ? 80 : 200) : 0,
         transition: 'margin-left 0.2s',
-        minHeight: '100vh',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
         marginBottom: isMobile ? 60 : 0 // Safe area for bottom nav
       }}>
         {!isMobile && (
