@@ -34,11 +34,12 @@ function generateMainId() {
 }
 
 // Функция для отправки сообщения пользователю через Telegram Bot API
+// Возвращает {success: boolean, messageId: number|null}
 async function sendMessageToUser(telegramUserId, message, options = {}) {
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN) {
     console.error('TELEGRAM_BOT_TOKEN не установлен');
-    return false;
+    return { success: false, messageId: null };
   }
 
   try {
@@ -49,8 +50,9 @@ async function sendMessageToUser(telegramUserId, message, options = {}) {
       ...options
     };
 
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, requestBody);
-    return true;
+    const response = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, requestBody);
+    const messageId = response.data?.result?.message_id || null;
+    return { success: true, messageId };
   } catch (error) {
     console.error('Error sending message via bot:', error.response?.data || error.message);
 
@@ -58,16 +60,17 @@ async function sendMessageToUser(telegramUserId, message, options = {}) {
     if (options.parse_mode && error.response?.data?.description?.includes('parse')) {
       try {
         console.log('[sendMessageToUser] Retrying without formatting...');
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        const retryResponse = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           chat_id: telegramUserId,
           text: message
         });
-        return true;
+        const messageId = retryResponse.data?.result?.message_id || null;
+        return { success: true, messageId };
       } catch (retryError) {
         console.error('Error sending message without formatting:', retryError.message);
       }
     }
-    return false;
+    return { success: false, messageId: null };
   }
 }
 
@@ -446,6 +449,7 @@ router.post('/webhook', async (req, res) => {
       if (messageText && messageText.startsWith('/')) {
         if (messageText === '/start') {
           // Теперь это безопасно отправляет сообщение с восклицательным знаком
+          // Используем новый формат ответа {success, messageId}
           await sendMessageToUser(telegramUserId, 'Привет! Я бот поддержки CRM системы. Напишите ваше сообщение, и менеджер свяжется с вами.');
         }
         return res.status(200).end();
@@ -464,6 +468,7 @@ router.post('/webhook', async (req, res) => {
       );
 
       if (!leadId) {
+        // Используем новый формат ответа {success, messageId}
         await sendMessageToUser(telegramUserId, 'Произошла ошибка при отправке сообщения. Попробуйте позже.');
       }
     }

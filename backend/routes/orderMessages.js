@@ -643,6 +643,64 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
     if (TELEGRAM_BOT_TOKEN) {
       try {
         console.log(`[OrderMessages File] Sending to Telegram user ${telegramUserId}...`);
+
+        // Импортируем функцию экранирования
+        const { escapeMarkdownV2 } = require('./bot');
+
+        // Обрабатываем caption так же, как content в текстовых сообщениях
+        let captionText = caption || '';
+        let replyMarkup = null;
+        let parseMode = null;
+
+        // Проверяем, является ли caption JSON с кнопками
+        if (caption && caption.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(caption);
+            if (parsed.text || parsed.buttons) {
+              captionText = parsed.text || '';
+
+              // Intelligent Keyboard Switching (как в текстовых сообщениях)
+              const urlButtons = parsed.buttons?.filter(b => b.type === 'url') || [];
+              const actionButtons = parsed.buttons?.filter(b => b.type !== 'url') || [];
+
+              // 1. Handle URL Buttons (Always Inline)
+              if (urlButtons.length > 0) {
+                const inlineKeyboard = urlButtons.map(b => ({ text: b.text, url: b.url }));
+                replyMarkup = { inline_keyboard: inlineKeyboard.map(b => [b]) };
+              }
+
+              // 2. Handle Action Buttons (Always Reply Keyboard for Bubble)
+              if (actionButtons.length > 0) {
+                const keyboardRows = actionButtons.map(b => [{ text: b.text }]);
+                const actionMarkup = {
+                  keyboard: keyboardRows,
+                  resize_keyboard: true,
+                  one_time_keyboard: true
+                };
+
+                // If we ALREADY have replyMarkup (for URLs), we need a secondary message for actions
+                if (replyMarkup) {
+                  // Отправим action кнопки отдельным сообщением после файла
+                  // Сохраняем для использования ниже
+                  var secondaryActionMarkup = actionMarkup;
+                } else {
+                  replyMarkup = actionMarkup;
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore parse error, treat as raw text
+            console.log('[OrderMessages File] Caption is not valid JSON, using as plain text');
+          }
+        }
+
+        // Применяем экранирование к тексту caption, если он не пустой
+        if (captionText && captionText.trim()) {
+          // Пробуем с MarkdownV2
+          parseMode = 'MarkdownV2';
+          captionText = escapeMarkdownV2(captionText);
+        }
+
         const formData = new FormData();
         formData.append('chat_id', telegramUserId);
 
@@ -653,11 +711,19 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
 
         formData.append('document', req.file.buffer, fileOptions);
 
-        if (caption) {
-          formData.append('caption', caption);
+        if (captionText && captionText.trim()) {
+          formData.append('caption', captionText);
+          if (parseMode) {
+            formData.append('parse_mode', parseMode);
+          }
         }
+
         if (reply_to_message_id) {
           formData.append('reply_to_message_id', reply_to_message_id);
+        }
+
+        if (replyMarkup) {
+          formData.append('reply_markup', JSON.stringify(replyMarkup));
         }
 
         const response = await axios.post(
@@ -667,15 +733,100 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
         );
         telegramMessageId = response.data?.result?.message_id;
         console.log(`[OrderMessages File] ✅ Sent to Telegram, message_id: ${telegramMessageId}`);
+
+        // Send Secondary Message (Action Buttons) if needed
+        if (typeof secondaryActionMarkup !== 'undefined' && secondaryActionMarkup) {
+          try {
+            await axios.post(
+              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+              {
+                chat_id: telegramUserId,
+                text: escapeMarkdownV2('Выберите действие:'),
+                parse_mode: 'MarkdownV2',
+                reply_markup: secondaryActionMarkup
+              }
+            );
+            console.log(`[OrderMessages File] ✅ Sent secondary action menu`);
+          } catch (secErr) {
+            console.error('[OrderMessages File] Error sending secondary action menu:', secErr.message);
+          }
+        }
       } catch (tgError) {
         console.error('[OrderMessages File] ❌ Telegram send error:', tgError.response?.data || tgError.message);
 
-        const errorCode = tgError.response?.data?.error_code;
-        if (errorCode === 403) {
-          systemErrorContent = '🚫 Пользователь заблокировал бота (403)';
+        // Если ошибка связана с парсингом Markdown, пробуем отправить без форматирования
+        if (tgError.response?.data?.description?.includes('parse')) {
+          try {
+            console.log('[OrderMessages File] Retrying without MarkdownV2 due to parse error');
+
+            // Re-parse caption без экранирования
+            let retryCaptionText = caption || '';
+            let retryReplyMarkup = null;
+
+            if (caption && caption.trim().startsWith('{')) {
+              try {
+                const parsed = JSON.parse(caption);
+                if (parsed.text) retryCaptionText = parsed.text;
+
+                // Восстанавливаем кнопки
+                if (parsed.buttons && Array.isArray(parsed.buttons) && parsed.buttons.length > 0) {
+                  const urlButtons = parsed.buttons.filter(b => b.type === 'url');
+                  const actionButtons = parsed.buttons.filter(b => b.type !== 'url');
+
+                  if (urlButtons.length > 0) {
+                    const inlineKeyboard = urlButtons.map(b => ({ text: b.text, url: b.url }));
+                    retryReplyMarkup = { inline_keyboard: inlineKeyboard.map(b => [b]) };
+                  } else if (actionButtons.length > 0) {
+                    const keyboardRows = actionButtons.map(b => [{ text: b.text }]);
+                    retryReplyMarkup = {
+                      keyboard: keyboardRows,
+                      resize_keyboard: true,
+                      one_time_keyboard: true
+                    };
+                  }
+                }
+              } catch (e) { }
+            }
+
+            const retryFormData = new FormData();
+            retryFormData.append('chat_id', telegramUserId);
+            retryFormData.append('document', req.file.buffer, {
+              filename: originalName,
+              contentType: req.file.mimetype,
+            });
+
+            if (retryCaptionText && retryCaptionText.trim()) {
+              retryFormData.append('caption', retryCaptionText); // Без парсинга
+            }
+
+            if (reply_to_message_id) {
+              retryFormData.append('reply_to_message_id', reply_to_message_id);
+            }
+
+            if (retryReplyMarkup) {
+              retryFormData.append('reply_markup', JSON.stringify(retryReplyMarkup));
+            }
+
+            const retryResponse = await axios.post(
+              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`,
+              retryFormData,
+              { headers: retryFormData.getHeaders() }
+            );
+            telegramMessageId = retryResponse.data?.result?.message_id;
+            console.log(`[OrderMessages File] ✅ Retry successful, message_id: ${telegramMessageId}`);
+          } catch (retryError) {
+            console.error('[OrderMessages File] ❌ Retry send error:', retryError.response?.data || retryError.message);
+            // Продолжаем сохранять в БД даже после неудачной повторной попытки
+          }
         } else {
-          // Default to generic error message for 400 or others
-          systemErrorContent = '💔 Пользователь удалил чат с ботом (400 или другая ошибка)';
+          // Не parse ошибка - обрабатываем как раньше
+          const errorCode = tgError.response?.data?.error_code;
+          if (errorCode === 403) {
+            systemErrorContent = '🚫 Пользователь заблокировал бота (403)';
+          } else {
+            // Default to generic error message for 400 or others
+            systemErrorContent = '💔 Пользователь удалил чат с ботом (400 или другая ошибка)';
+          }
         }
 
         // Don't return here - we still want to save to DB even if TG fails

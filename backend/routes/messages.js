@@ -240,8 +240,8 @@ router.post('/contact/:contactId', auth, async (req, res) => {
         .single();
 
       if (contact && contact.telegram_user_id) {
-        // Use reliable sender from bot.js
-        const success = await sendMessageToUser(contact.telegram_user_id, content);
+        // Use reliable sender from bot.js - теперь возвращает {success, messageId}
+        const { success, messageId } = await sendMessageToUser(contact.telegram_user_id, content);
 
         if (!success) {
           // We can't easily distinguish 'blocked' vs 'error' without deep axios inspection inside bot.js,
@@ -251,9 +251,8 @@ router.post('/contact/:contactId', auth, async (req, res) => {
           messageStatus = 'error';
           errorMessage = 'Ошибка отправки в Telegram';
         } else {
-          // Success! Note: we don't get message_id back easily from simple helper.
-          // If message_id is critical, we'd need to update bot.js to return the full response object.
-          // For now, let's assume delivered.
+          // Success! Save the message_id
+          telegramMessageId = messageId;
         }
       }
 
