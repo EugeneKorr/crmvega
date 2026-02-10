@@ -160,6 +160,9 @@ class OrderMessagesService {
             if (order.main_id) io.to(`main_${order.main_id}`).emit('new_message', messageWithContact);
             io.to(`order_${orderId}`).emit('new_client_message', messageWithContact);
             if (order.contact_id) io.to(`contact_${order.contact_id}`).emit('new_message', messageWithContact);
+
+            // Глобальное уведомление для всех crm_users (для счетчиков в меню)
+            io.to('crm_users').emit('new_message_global', messageWithContact);
         }
 
         return savedMessage;

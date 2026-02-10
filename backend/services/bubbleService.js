@@ -171,8 +171,8 @@ class BubbleService {
                 if (socketPayload.main_id) io.to(`main_${socketPayload.main_id}`).emit('new_client_message', socketPayload);
                 if (finalContactId) io.to(`contact_${finalContactId}`).emit('new_client_message', socketPayload);
                 if (finalOrderId) io.to(`order_${finalOrderId}`).emit('new_client_message', socketPayload);
+                io.to('crm_users').emit('new_message_global', socketPayload);
                 io.emit('new_message_bubble', socketPayload);
-                io.emit('new_message_global', socketPayload);
             }
             if (finalContactId) io.emit('contact_message', { contact_id: finalContactId, message: result });
         }

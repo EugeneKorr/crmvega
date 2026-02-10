@@ -45,43 +45,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
   }, [isMobile]);
 
-  const menuItems: MenuProps['items'] = [
-    {
-      key: '/orders',
-      icon: <DashboardOutlined />,
-      label: 'Заявки',
-    },
-    {
-      key: '/contacts',
-      icon: <TeamOutlined />,
-      label: 'Контакты',
-    },
-    {
-      key: '/inbox',
-      icon: <MessageOutlined />,
-      label: 'Диалоги',
-    },
-    {
-      key: '/analytics',
-      icon: <BarChartOutlined />,
-      label: 'Аналитика',
-    },
-    {
-      key: '/automation',
-      icon: <RobotOutlined />,
-      label: 'Автоматизация',
-    },
-    {
-      key: '/ai-agent',
-      icon: <RobotOutlined style={{ color: '#52c41a' }} />,
-      label: 'AI Агент',
-    },
-    {
-      key: '/settings',
-      icon: <SettingOutlined />,
-      label: 'Настройки',
-    },
-  ];
+
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key);
@@ -121,6 +85,44 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { socket } = useSocket(); // Use global socket
   const lastSoundTimeRef = React.useRef(0); // Debounce sound
   const [unreadTotal, setUnreadTotal] = useState(0);
+
+  const menuItems: MenuProps['items'] = [
+    {
+      key: '/orders',
+      icon: <DashboardOutlined />,
+      label: 'Заявки',
+    },
+    {
+      key: '/contacts',
+      icon: <TeamOutlined />,
+      label: 'Контакты',
+    },
+    {
+      key: '/inbox',
+      icon: <Badge count={unreadTotal} offset={[10, 0]} size="small"><MessageOutlined /></Badge>,
+      label: 'Диалоги',
+    },
+    {
+      key: '/analytics',
+      icon: <BarChartOutlined />,
+      label: 'Аналитика',
+    },
+    {
+      key: '/automation',
+      icon: <RobotOutlined />,
+      label: 'Автоматизация',
+    },
+    {
+      key: '/ai-agent',
+      icon: <RobotOutlined style={{ color: '#52c41a' }} />,
+      label: 'AI Агент',
+    },
+    {
+      key: '/settings',
+      icon: <SettingOutlined />,
+      label: 'Настройки',
+    },
+  ];
 
   // Sound function using Web Audio API
   const audioContextRef = React.useRef<any>(null);
@@ -238,14 +240,40 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     socket.on('new_message_global', handleGlobalMessage);
 
-    // Listen for read status updates
+    const handleNewOrder = (order: any) => {
+      console.log('📨 SOCKET EVENT: new_order', order);
+      playAlertSound();
+      notification.success({
+        message: 'Новая заявка!',
+        description: `Заявка от ${order.contact?.name || 'клиента'}. Статус: ${order.status}`,
+        duration: 5,
+        onClick: () => navigate(`/order/${order.main_id || order.id}`)
+      });
+      fetchUnreadCount();
+    };
+
+    const handleOrderUpdated = (order: any) => {
+      console.log('📨 SOCKET EVENT: order_updated', order);
+      notification.info({
+        message: 'Заявка обновлена',
+        description: `Заявка #${order.id} теперь в статусе ${order.status}`,
+        duration: 3,
+      });
+      fetchUnreadCount();
+    };
+
     const handleReadMessage = () => {
       fetchUnreadCount();
     };
+
+    socket.on('new_order', handleNewOrder);
+    socket.on('order_updated', handleOrderUpdated);
     socket.on('messages_read', handleReadMessage);
 
     return () => {
       socket.off('new_message_global', handleGlobalMessage);
+      socket.off('new_order', handleNewOrder);
+      socket.off('order_updated', handleOrderUpdated);
       socket.off('messages_read', handleReadMessage);
     };
   }, [socket, manager, fetchUnreadCount]);

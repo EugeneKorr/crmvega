@@ -105,7 +105,9 @@ app.get('/', (req, res) => {
 
 // Socket.IO для real-time общения
 io.on('connection', (socket) => {
-  console.log('✅ User connected:', socket.id);
+  // Глобальная комната для всех менеджеров
+  socket.join('crm_users');
+  console.log('✅ User connected:', socket.id, 'joined crm_users');
 
   // Присоединение к комнате пользователя
   socket.on('join_user', (userId) => {
