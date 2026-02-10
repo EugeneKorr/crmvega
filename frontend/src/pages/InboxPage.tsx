@@ -175,11 +175,9 @@ const InboxPage: React.FC = () => {
 
         socket.on('new_message', handleNewMessage);
         socket.on('new_client_message', handleNewMessage);
-        socket.on('new_message_global', handleNewMessage); // Fallback global
+        socket.on('new_message_global', handleNewMessage);
         socket.on('contact_message', (data: any) => {
-            console.log('📨 SOCKET EVENT: contact_message received', data);
             if (data.message) {
-                // Assign contact_id from wrapper if missing in message
                 const msg = { ...data.message, contact_id: data.contact_id || data.message.contact_id };
                 handleNewMessage(msg);
             }
@@ -187,22 +185,21 @@ const InboxPage: React.FC = () => {
         socket.on('message_updated', handleMessageUpdated);
         socket.on('connect', handleReconnect);
 
-        // Join active lead room
-        if (activeOrder?.main_id) {
-            console.log('🔌 Joining room main_', activeOrder.main_id);
-            socket.emit('join_main', activeOrder.main_id);
-        }
+        // Join rooms logic
+        const joinRooms = () => {
+            if (activeOrder?.main_id) {
+                socket.emit('join_main', activeOrder.main_id);
+            }
+            if (contacts.length > 0) {
+                contacts.forEach(c => {
+                    socket.emit('join_contact', c.id);
+                });
+            }
+        };
 
-        // Join rooms for all currently loaded contacts
-        if (contacts.length > 0) {
-            console.log(`🔌 Joining ${contacts.length} contact rooms...`);
-            contacts.forEach(c => {
-                socket.emit('join_contact', c.id);
-            });
-        }
+        joinRooms();
 
         return () => {
-            console.log('🔌 Cleaning up socket listeners');
             socket.off('new_message', handleNewMessage);
             socket.off('new_client_message', handleNewMessage);
             socket.off('new_message_global', handleNewMessage);
@@ -211,19 +208,23 @@ const InboxPage: React.FC = () => {
             socket.off('connect', handleReconnect);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeOrder, socket, contacts.length]);
+    }, [activeOrder, socket]); // REMOVED contacts.length to stop loop
 
     // Handle URL param selection
     useEffect(() => {
-        const contactId = searchParams.get('contactId');
-        if (contactId && contacts.length > 0) {
-            const contact = contacts.find(c => c.id === Number(contactId));
-            if (contact && (!selectedContact || selectedContact.id !== contact.id)) {
-                selectContact(contact);
+        const contactIdFromUrl = searchParams.get('contactId');
+        if (contactIdFromUrl) {
+            const id = Number(contactIdFromUrl);
+            // Only select if not already selected to prevent infinite loops
+            if (id && selectedContactRef.current !== id) {
+                const contact = contacts.find(c => c.id === id);
+                if (contact) {
+                    selectContact(contact);
+                }
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchParams, contacts]);
+    }, [searchParams, contacts.length]); // Use length as a more stable dependency
 
     const fetchContacts = async () => {
         try {
