@@ -109,19 +109,58 @@ const InboxPage: React.FC = () => {
 
         const handleNewMessage = (data: { contact_id: number, message: Message }) => {
             console.log('📨 InboxPage received socket message:', data);
-            // Update last message in contacts list
-            setContacts(prev => prev.map(c => {
-                if (c.id === data.contact_id) {
-                    return {
-                        ...c,
-                        last_message: data.message,
-                        last_message_at: data.message.created_at || data.message['Created Date'],
-                        last_active: data.message.created_at || data.message['Created Date'], // Update this too for the UI
-                        unread_count: (selectedContact?.id === c.id) ? 0 : (c.unread_count || 0) + 1
-                    };
+            console.log('📨 Message time:', data.message.created_at || data.message['Created Date']);
+
+            // Get the timestamp for sorting
+            const messageTime = data.message.created_at || data.message['Created Date'] || new Date().toISOString();
+
+            setContacts(prev => {
+                console.log('📨 Current contacts count:', prev.length);
+
+                // Check if contact exists in the list
+                const contactExists = prev.some(c => c.id === data.contact_id);
+
+                if (!contactExists) {
+                    // Contact not in list - this can happen if:
+                    // 1. It's a brand new contact
+                    // 2. Contact was filtered out
+                    // For now, we'll just skip adding and let the user refresh
+                    // In the future, we could fetch the contact details here
+                    console.log(`📨 Contact ${data.contact_id} not in list, skipping update`);
+                    return prev;
                 }
-                return c;
-            }).sort((a, b) => new Date(b.last_active || 0).getTime() - new Date(a.last_active || 0).getTime())); // Sort by last_active
+
+                console.log(`📨 Updating contact ${data.contact_id} with new message`);
+
+                // Update existing contact
+                const updated = prev.map(c => {
+                    if (c.id === data.contact_id) {
+                        const updatedContact = {
+                            ...c,
+                            last_message: data.message,
+                            last_message_at: messageTime,
+                            last_active: messageTime, // Update for UI sorting
+                            unread_count: (selectedContact?.id === c.id) ? 0 : (c.unread_count || 0) + 1
+                        };
+                        console.log('📨 Updated contact:', updatedContact.name, 'new time:', messageTime);
+                        return updatedContact;
+                    }
+                    return c;
+                });
+
+                console.log('📨 Sorting contacts...');
+
+                // Sort by last_active to move the updated contact to the top
+                const sorted = updated.sort((a, b) => {
+                    const timeA = new Date(a.last_active || 0).getTime();
+                    const timeB = new Date(b.last_active || 0).getTime();
+                    return timeB - timeA;
+                });
+
+                console.log('📨 Sorted contacts, first 3:', sorted.slice(0, 3).map(c => ({ name: c.name, time: c.last_active })));
+
+                return sorted;
+            });
 
             // Update current chat if open
             if (activeOrder && String(data.message.main_id) === String(activeOrder.main_id)) {
