@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSocket } from '../contexts/SocketContext';
 import { contactsAPI, ordersAPI } from '../services/api';
+import { supabase } from '../lib/supabase';
 import { InboxContact, Order } from '../types';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,7 +36,6 @@ interface ExtendedInboxContact extends InboxContact {
 
 const InboxPage: React.FC = () => {
     const { manager } = useAuth();
-    const { socket } = useSocket();
     const [searchParams, setSearchParams] = useSearchParams();
     const [contacts, setContacts] = useState<ExtendedInboxContact[]>([]);
     const [selectedContact, setSelectedContact] = useState<ExtendedInboxContact | null>(null);
@@ -73,16 +72,54 @@ const InboxPage: React.FC = () => {
         fetchContacts();
     }, [showUnreadOnly, filterStages, searchQuery]);
 
+    // Supabase Realtime Subscription
     useEffect(() => {
-        if (!socket) return;
-        const handleGlobalUpdate = () => {
-            fetchContacts();
-        };
-        socket.on('new_message_global', handleGlobalUpdate);
+        const channel = supabase
+            .channel('global_inbox')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'messages' },
+                () => {
+                    fetchContacts(); // Refresh list on any message change
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'contacts' },
+                () => {
+                    fetchContacts();
+                }
+            )
+            .subscribe();
+
+        // Presence implementation
+        if (manager) {
+            const presenceChannel = supabase.channel('online_users');
+            presenceChannel
+                .on('presence', { event: 'sync' }, () => {
+                    // Could be used to show who is online
+                    console.log('Presence sync:', presenceChannel.presenceState());
+                })
+                .subscribe(async (status: string) => {
+                    if (status === 'SUBSCRIBED') {
+                        await presenceChannel.track({
+                            user_id: manager.id,
+                            name: manager.name,
+                            online_at: new Date().toISOString(),
+                        });
+                    }
+                });
+
+            return () => {
+                supabase.removeChannel(channel);
+                supabase.removeChannel(presenceChannel);
+            };
+        }
+
         return () => {
-            socket.off('new_message_global', handleGlobalUpdate);
+            supabase.removeChannel(channel);
         };
-    }, [socket]);
+    }, [manager]);
 
     const fetchContacts = async () => {
         setIsLoadingContacts(true);

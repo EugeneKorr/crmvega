@@ -87,27 +87,16 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }
     };
 
+    const [otherViewers, setOtherViewers] = useState<{ name: string; id: number }[]>([]);
+
     useEffect(() => {
         if (contactId) fetchMessages(false);
     }, [contactId]);
 
     useEffect(() => {
-        if (messages.length > 0 && !isLoadingMessages && !loadingMore && isInitialLoadRef.current) {
-            scrollToBottom(true);
-            isInitialLoadRef.current = false;
-        }
-    }, [messages.length, isLoadingMessages, loadingMore, scrollToBottom]);
+        if (!contactId || !activeOrder || !activeOrder.main_id) return;
 
-    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        const container = e.currentTarget;
-        if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages) {
-            fetchMessages(true);
-        }
-    };
-
-    useEffect(() => {
-        if (!contactId || !activeOrder) return;
-
+        // 1. Message Subscription
         const channel = supabase
             .channel(`messages:${activeOrder.main_id}`)
             .on(
@@ -121,15 +110,22 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 (payload) => {
                     const newMessage = payload.new as Message;
                     setMessages(prev => {
-                        const optimisticIndex = prev.findIndex(m => String(m.id).startsWith('temp-'));
-                        if (optimisticIndex !== -1) {
-                            const updated = [...prev];
-                            updated[optimisticIndex] = newMessage;
-                            return updated;
-                        }
+                        // Check if we already have this message (via API response)
                         if (prev.some(m => String(m.id) === String(newMessage.id))) return prev;
+
+                        // If not found by ID, purely push it. 
+                        // Note: optimistics are replaced by API response, not here usually.
                         return [...prev, newMessage];
                     });
+
+                    // Scroll to bottom if new message arrived
+                    if (messagesContainerRef.current) {
+                        const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+                        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+                        if (isNearBottom) {
+                            scrollToBottom(true);
+                        }
+                    }
                 }
             )
             .on(
@@ -147,10 +143,62 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             )
             .subscribe();
 
+        // 2. Presence Subscription
+        let presenceChannel: any = null;
+        if (manager) {
+            presenceChannel = supabase.channel(`chat_presence:${activeOrder.main_id}`, {
+                config: {
+                    presence: {
+                        key: String(manager.id),
+                    },
+                },
+            });
+
+            presenceChannel
+                .on('presence', { event: 'sync' }, () => {
+                    const state = presenceChannel.presenceState();
+                    const viewers: { name: string; id: number }[] = [];
+                    for (const key in state) {
+                        if (key !== String(manager.id)) {
+                            // @ts-ignore
+                            const userState = state[key]?.[0];
+                            if (userState) {
+                                viewers.push({ name: userState.name, id: userState.user_id });
+                            }
+                        }
+                    }
+                    setOtherViewers(viewers);
+                })
+                .subscribe(async (status: string) => {
+                    if (status === 'SUBSCRIBED') {
+                        await presenceChannel.track({
+                            user_id: manager.id,
+                            name: manager.name,
+                            online_at: new Date().toISOString(),
+                        });
+                    }
+                });
+        }
+
         return () => {
             supabase.removeChannel(channel);
+            if (presenceChannel) supabase.removeChannel(presenceChannel);
         };
-    }, [contactId, activeOrder?.main_id]);
+    }, [contactId, activeOrder?.main_id, manager]);
+
+    useEffect(() => {
+        if (messages.length > 0 && !isLoadingMessages && !loadingMore && isInitialLoadRef.current) {
+            scrollToBottom(true);
+            isInitialLoadRef.current = false;
+        }
+    }, [messages.length, isLoadingMessages, loadingMore, scrollToBottom]);
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const container = e.currentTarget;
+        if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages) {
+            fetchMessages(true);
+        }
+    };
 
     const handleAddReaction = async (msg: Message, emoji: string) => {
         setMessages(prev => prev.map(m => {
@@ -191,7 +239,9 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         setReplyTo(null);
 
         try {
-            await orderMessagesAPI.sendClientMessage(activeOrder.id, text, Number(currentReplyTo?.message_id_tg) || undefined);
+            const savedMessage = await orderMessagesAPI.sendClientMessage(activeOrder.id, text, Number(currentReplyTo?.message_id_tg) || undefined);
+            // Replace optimistic message with real one
+            setMessages(prev => prev.map(m => String(m.id) === optimisticId ? { ...savedMessage, sender: manager } : m));
         } catch (error: any) {
             setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
             antMessage.error('Ошибка отправки');
@@ -200,8 +250,54 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }
     };
 
-    const handleSendVoice = async (voice: Blob, duration: number) => {
-        if (!activeOrder?.id) return;
+    // UI for Presence
+    const renderPresence = () => {
+        if (otherViewers.length === 0) return null;
+        return (
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8, paddingLeft: 16 }}>
+                Сейчас смотрят: {otherViewers.map(v => v.name).join(', ')}
+            </div>
+        );
+    };
+
+    const uploadFile = async (file: File, caption?: string) => {
+        if (!activeOrder?.id || !manager) return;
+        setSending(true);
+        const optimisticId = `temp-${Date.now()}`;
+        const isImage = file.type.startsWith('image/');
+        const optimisticMessage: Message = {
+            id: optimisticId as any,
+            content: caption || '',
+            author_type: 'manager',
+            message_type: isImage ? 'image' : 'file',
+            'Created Date': new Date().toISOString(),
+            is_read: true,
+            main_id: activeOrder.main_id,
+            manager_id: manager.id,
+            status: 'pending' as any,
+            attachment_url_internal: URL.createObjectURL(file), // Support image preview instantly
+            reply_to_mess_id_tg: replyTo?.message_id_tg,
+            reply_to_id: replyTo?.id,
+            sender: manager
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        scrollToBottom();
+        const currentReplyTo = replyTo;
+        setReplyTo(null);
+
+        try {
+            const savedMessage = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption, Number(currentReplyTo?.message_id_tg) || undefined);
+            setMessages(prev => prev.map(m => String(m.id) === optimisticId ? { ...savedMessage, sender: manager } : m));
+        } catch (error) {
+            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
+            antMessage.error('Ошибка отправки файла');
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const sendVoice = async (voice: Blob, duration: number) => {
+        if (!activeOrder?.id || !manager) return;
         setSending(true);
         const optimisticId = `temp-voice-${Date.now()}`;
         const optimisticMessage: Message = {
@@ -224,43 +320,11 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         const currentReplyTo = replyTo;
         setReplyTo(null);
         try {
-            await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration, Number(currentReplyTo?.message_id_tg) || undefined);
+            const savedMessage = await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration, Number(currentReplyTo?.message_id_tg) || undefined);
+            setMessages(prev => prev.map(m => String(m.id) === optimisticId ? { ...savedMessage, sender: manager } : m));
         } catch (error) {
             setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
             antMessage.error('Ошибка отправки ГС');
-        } finally {
-            setSending(false);
-        }
-    };
-
-    const handleSendFile = async (file: File, caption?: string) => {
-        if (!activeOrder?.id) return;
-        setSending(true);
-        const optimisticId = `temp-file-${Date.now()}`;
-        const isImage = file.type.startsWith('image/');
-        const optimisticMessage: Message = {
-            id: optimisticId as any,
-            content: caption || '',
-            author_type: 'manager',
-            message_type: isImage ? 'image' : 'file',
-            'Created Date': new Date().toISOString(),
-            is_read: true,
-            main_id: activeOrder.main_id,
-            status: 'pending' as any,
-            attachment_url_internal: URL.createObjectURL(file), // Support image preview instantly
-            reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id,
-            sender: manager || undefined
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
-        scrollToBottom();
-        const currentReplyTo = replyTo;
-        setReplyTo(null);
-        try {
-            await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption, Number(currentReplyTo?.message_id_tg) || undefined);
-        } catch (error: any) {
-            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
-            antMessage.error('Ошибка отправки файла');
         } finally {
             setSending(false);
         }
@@ -333,6 +397,7 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                     backgroundBlendMode: 'overlay',
                 }}
             >
+                {renderPresence()}
                 {isLoadingMessages ? (
                     <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
                 ) : (
@@ -344,16 +409,18 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 )}
             </div>
 
-            {activeOrder && (
-                <ChatInput
-                    onSendText={handleSendMessage}
-                    onSendVoice={handleSendVoice}
-                    onSendFile={handleSendFile}
-                    sending={sending}
-                    replyTo={replyTo}
-                    onCancelReply={() => setReplyTo(null)}
-                />
-            )}
-        </div>
+            {
+                activeOrder && (
+                    <ChatInput
+                        onSendText={handleSendMessage}
+                        onSendVoice={sendVoice}
+                        onSendFile={uploadFile}
+                        sending={sending}
+                        replyTo={replyTo}
+                        onCancelReply={() => setReplyTo(null)}
+                    />
+                )
+            }
+        </div >
     );
 };
