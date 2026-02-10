@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { Server } from 'socket.io';
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -65,7 +64,7 @@ class NoteService {
         return data;
     }
 
-    async create(data: { contact_id?: string; order_id?: string; content: string; priority?: string }, manager: any, io?: Server) {
+    async create(data: { contact_id?: string; order_id?: string; content: string; priority?: string }, manager: any) {
         const { contact_id, order_id, content, priority } = data;
 
         const { data: note, error } = await supabase
@@ -102,7 +101,7 @@ class NoteService {
                 const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
                 const systemContent = `📝 ${managerName} создал заметку: "${shortContent}" ${timestamp}`;
 
-                const { data: sysMsg, error: sysMsgError } = await supabase
+                await supabase
                     .from('internal_messages')
                     .insert({
                         order_id: order_id,
@@ -110,13 +109,8 @@ class NoteService {
                         content: systemContent,
                         is_read: false,
                         attachment_type: 'system'
-                    })
-                    .select()
-                    .single();
+                    });
 
-                if (!sysMsgError && sysMsg && io) {
-                    io.to(`order_${order_id}`).emit('new_internal_message', sysMsg);
-                }
             } catch (e) {
                 console.error('Error creating system message for note:', e);
             }

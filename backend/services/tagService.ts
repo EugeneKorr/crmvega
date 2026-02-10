@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { clearCache } from '../utils/cache';
-import { Server } from 'socket.io';
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -137,7 +136,7 @@ class TagService {
         return { success: true };
     }
 
-    async assignToOrder(orderId: string, tagId: string, manager: any, io?: Server) {
+    async assignToOrder(orderId: string, tagId: string, manager: any) {
         const { data: tag } = await supabase
             .from('tags')
             .select('name')
@@ -167,7 +166,7 @@ class TagService {
 
                 const systemContent = `🏷️ ${managerName} добавил тег "${tag.name}" ${timestamp}`;
 
-                const { data: sysMsg, error: sysMsgError } = await supabase
+                await supabase
                     .from('internal_messages')
                     .insert({
                         order_id: orderId,
@@ -175,13 +174,8 @@ class TagService {
                         content: systemContent,
                         is_read: false,
                         attachment_type: 'system'
-                    })
-                    .select()
-                    .single();
+                    });
 
-                if (!sysMsgError && sysMsg && io) {
-                    io.to(`order_${orderId}`).emit('new_internal_message', sysMsg);
-                }
             } catch (e) {
                 console.error('Error creating system message for tag assignment:', e);
             }
@@ -191,7 +185,7 @@ class TagService {
         return data;
     }
 
-    async removeFromOrder(orderId: string, tagId: string, manager: any, io?: Server) {
+    async removeFromOrder(orderId: string, tagId: string, manager: any) {
         const { data: tag } = await supabase
             .from('tags')
             .select('name')
@@ -217,7 +211,7 @@ class TagService {
 
                 const systemContent = `🏷️ ${managerName} удалил тег "${tag.name}" ${timestamp}`;
 
-                const { data: sysMsg, error: sysMsgError } = await supabase
+                await supabase
                     .from('internal_messages')
                     .insert({
                         order_id: orderId,
@@ -225,13 +219,8 @@ class TagService {
                         content: systemContent,
                         is_read: false,
                         attachment_type: 'system'
-                    })
-                    .select()
-                    .single();
+                    });
 
-                if (!sysMsgError && sysMsg && io) {
-                    io.to(`order_${orderId}`).emit('new_internal_message', sysMsg);
-                }
             } catch (e) {
                 console.error('Error creating system message for tag removal:', e);
             }

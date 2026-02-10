@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { message } from 'antd';
 import { ordersAPI } from '../services/api';
-import { useSocket } from '../contexts/SocketContext';
+import { supabase } from '../lib/supabase';
 import { Order, OrderStatus } from '../types';
 
 export const useOrder = (id: string | undefined) => {
     const [order, setOrder] = useState<Order | null>(null);
     const [loading, setLoading] = useState(false);
-    const { socket } = useSocket();
 
     const fetchOrder = useCallback(async () => {
         if (!id || loading) return;
@@ -42,40 +41,46 @@ export const useOrder = (id: string | undefined) => {
         return updateOrder({ status: newStatus });
     };
 
-    // Socket Logic
+    // Realtime Logic
     useEffect(() => {
-        if (!socket || !id) return;
+        if (!id) return;
 
-        const handleOrderUpdated = (updatedOrder: Order) => {
-            // Check if this update relates to current order
-            // Using strict string comparison for IDs to handle potential type mismatches
-            const currentIdStr = String(id);
-            const updatedIdStr = String(updatedOrder.id);
-            const updatedMainIdStr = String(updatedOrder.main_id);
-
-            if (updatedIdStr === currentIdStr || updatedMainIdStr === currentIdStr) {
-                // Merge to preserve local fields not in payload (tags, etc)
-                setOrder(prev => prev ? {
-                    ...prev,
-                    ...updatedOrder,
-                    // Preserve nested objects if missing in update
-                    contact: updatedOrder.contact || prev.contact,
-                    tags: updatedOrder.tags || prev.tags,
-                    unread_count: updatedOrder.unread_count ?? prev.unread_count
-                } : updatedOrder);
-            }
+        const handleOrderUpdate = (payload: any) => {
+            const updatedOrder = payload.new as Order;
+            setOrder(prev => {
+                if (!prev) return updatedOrder;
+                // Verify it matches current order (redundant with filter mostly, but safe)
+                if (String(prev.id) === String(updatedOrder.id)) {
+                    return {
+                        ...prev,
+                        ...updatedOrder,
+                        // Preserve nested objects if missing in update
+                        contact: prev.contact, // Update doesn't usually return relations
+                        tags: prev.tags,
+                        unread_count: updatedOrder.unread_count ?? prev.unread_count
+                    };
+                }
+                return prev;
+            });
         };
 
-        socket.on('order_updated', handleOrderUpdated);
-
-        // Join specific room if needed (mostly backend handles broadcasting)
-        socket.emit('join_order', id);
+        const channel = supabase.channel(`order_details:${id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'orders',
+                    filter: `id=eq.${id}`
+                },
+                handleOrderUpdate
+            )
+            .subscribe();
 
         return () => {
-            socket.off('order_updated', handleOrderUpdated);
-            socket.emit('leave_order', id);
+            supabase.removeChannel(channel);
         };
-    }, [socket, id]);
+    }, [id]);
 
     useEffect(() => {
         fetchOrder();

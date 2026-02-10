@@ -27,7 +27,6 @@ class OrdersController {
                 const tagsSet = new Set(tagsFilter.map(t => parseInt(t)));
                 // Filter result.orders
                 if (result.orders) {
-                    // @ts-ignore
                     result.orders = result.orders.filter((order: any) => order.tags && order.tags.some((tag: any) => tagsSet.has(tag.id)));
                 }
             }
@@ -71,8 +70,7 @@ class OrdersController {
             const manager = req.manager as Manager;
             if (!manager) return res.status(401).json({ error: 'Unauthorized' });
 
-            const io = req.app.get('io');
-            const order = await ordersService.create(req.body, manager, io);
+            const order = await ordersService.create(req.body, manager);
             res.json(order);
         } catch (error: any) {
             console.error('Error creating order:', error);
@@ -86,8 +84,7 @@ class OrdersController {
             const manager = req.manager as Manager;
             if (!manager) return res.status(401).json({ error: 'Unauthorized' });
 
-            const io = req.app.get('io');
-            const order = await ordersService.update(req.params.id as string, req.body, manager, io);
+            const order = await ordersService.update(req.params.id as string, req.body, manager);
             res.json(order);
         } catch (error: any) {
             console.error('Error updating order:', error);
@@ -99,8 +96,7 @@ class OrdersController {
     // DELETE /:id
     async delete(req: Request, res: Response) {
         try {
-            const io = req.app.get('io');
-            await ordersService.delete(req.params.id as string, io);
+            await ordersService.delete(req.params.id as string);
             res.json({ success: true });
         } catch (error: any) {
             console.error('Error deleting order:', error);
@@ -131,8 +127,7 @@ class OrdersController {
             if (!manager) return res.status(401).json({ error: 'Unauthorized' });
 
             const { ids, status } = req.body;
-            const io = req.app.get('io');
-            const count = await ordersService.bulkUpdateStatus(ids, status, manager, io);
+            const count = await ordersService.bulkUpdateStatus(ids, status, manager);
             res.json({ success: true, updatedCount: count });
         } catch (error: any) {
             console.error('Bulk update error:', error);
@@ -144,8 +139,7 @@ class OrdersController {
     async bulkDelete(req: Request, res: Response) {
         try {
             const { ids } = req.body;
-            const io = req.app.get('io');
-            const count = await ordersService.bulkDelete(ids, io);
+            const count = await ordersService.bulkDelete(ids);
             res.json({ success: true, count });
         } catch (error: any) {
             console.error('Bulk delete error:', error);

@@ -22,8 +22,7 @@ class BubbleController {
     async createMessage(req: Request, res: Response) {
         try {
             console.log('[Bubble Webhook] POST /message', JSON.stringify(req.body, null, 2));
-            const io = req.app.get('io');
-            const result = await bubbleService.processMessage(req.body, io);
+            const result = await bubbleService.processMessage(req.body);
             res.json({ success: true, data: result });
         } catch (error: any) {
             console.error('Error creating message from Bubble:', error);
@@ -35,8 +34,7 @@ class BubbleController {
     async updateMessage(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const io = req.app.get('io');
-            const result = await bubbleService.updateMessage(id as string, req.body, io);
+            const result = await bubbleService.updateMessage(id as string, req.body);
             res.json({ success: true, data: result });
         } catch (error: any) {
             console.error('Error updating message from Bubble:', error);
@@ -46,8 +44,7 @@ class BubbleController {
 
     async createOrder(req: Request, res: Response) {
         try {
-            const io = req.app.get('io');
-            const result = await bubbleService.processOrder(req.body, io);
+            const result = await bubbleService.processOrder(req.body);
             console.log(`[Bubble Webhook] Created order ${result.id}`);
             res.json({ success: true, data: result });
         } catch (error: any) {
@@ -70,13 +67,12 @@ class BubbleController {
 
     async updateStatus(req: Request, res: Response) {
         try {
-            const io = req.app.get('io');
             // processStatusUpdate expects { leads: { status: [...] } } or similar structure?
             // Service check: if (!leads || !leads.status ...)
             // So if we pass req.body.leads, then req.body must look like { leads: { status: [...] } }
             // If the webhook sends { status: [...] } directly inside leads property?
             // The JS code did `req.body.leads`, so I'll trust that.
-            const result = await bubbleService.processStatusUpdate(req.body.leads, io);
+            const result = await bubbleService.processStatusUpdate(req.body.leads);
             res.json({ success: true, ...result });
         } catch (error: any) {
             console.error('Error processing status update:', error);
@@ -89,8 +85,7 @@ class BubbleController {
             const { user, note } = req.body;
             if (!user || !note) return res.status(400).json({ success: false, error: 'Missing user/note' });
 
-            const io = req.app.get('io');
-            const result = await bubbleService.processNoteToUser(user, note, io);
+            const result = await bubbleService.processNoteToUser(user, note);
             res.json({ success: true, ...result });
         } catch (error: any) {
             console.error('[Bubble Webhook] Error in note_to_user:', error);
@@ -103,8 +98,7 @@ class BubbleController {
             const { main_id, note } = req.body;
             if (!main_id || !note) return res.status(400).json({ success: false, error: 'Missing main_id/note' });
 
-            const io = req.app.get('io');
-            const result = await bubbleService.processNoteToOrder(main_id, note, io);
+            const result = await bubbleService.processNoteToOrder(main_id, note);
             res.json({ success: true, ...result });
         } catch (error: any) {
             console.error('[Bubble Webhook] Error in note_to_order:', error);

@@ -78,9 +78,8 @@ class TagController {
             const { orderId } = req.params;
             const { tag_id } = req.body;
             const manager = (req as any).manager;
-            const io = req.app.get('io');
 
-            const data = await tagService.assignToOrder(orderId as string, tag_id as string, manager, io);
+            const data = await tagService.assignToOrder(orderId as string, tag_id as string, manager);
             res.json(data);
         } catch (error: any) {
             console.error('Error assigning tag:', error);
@@ -92,9 +91,8 @@ class TagController {
         try {
             const { orderId, tagId } = req.params;
             const manager = (req as any).manager;
-            const io = req.app.get('io');
 
-            const result = await tagService.removeFromOrder(orderId as string, tagId as string, manager, io);
+            const result = await tagService.removeFromOrder(orderId as string, tagId as string, manager);
             res.json(result);
         } catch (error: any) {
             console.error('Error removing tag:', error);

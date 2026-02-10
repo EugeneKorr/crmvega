@@ -11,6 +11,8 @@ import { formatDuration } from '../utils/chatUtils';
 import { templatesAPI } from '../services/api';
 import { WebsiteContent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+// @ts-ignore
+import Recorder from 'opus-recorder';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -45,7 +47,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const [recordedAudio, setRecordedAudio] = useState<Blob | null>(null);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
+    const recorderRef = useRef<any>(null);
+    const audioChunksRef = useRef<any[]>([]);
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -140,31 +143,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            let mimeType = 'audio/webm;codecs=opus';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-                mimeType = 'audio/mp4';
-                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = '';
-            }
-            const options = mimeType ? { mimeType } : undefined;
 
-            const mediaRecorder = new MediaRecorder(stream, options);
-            mediaRecorderRef.current = mediaRecorder;
+            // @ts-ignore
+            const recorder = new Recorder({
+                encoderPath: '/opus-recorder/encoderWorker.min.js',
+                streamPages: true,
+                encoderApplication: 2048, // VOIP
+                encoderFrameSize: 20,
+                maxBuffersPerPage: 40,
+                numberOfChannels: 1
+            });
+
+            recorderRef.current = recorder;
             audioChunksRef.current = [];
 
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            recorder.ondataavailable = (typedArray: Uint8Array) => {
+                audioChunksRef.current.push(typedArray);
             };
 
-            mediaRecorder.onstop = () => {
-                const type = mimeType || 'audio/webm';
-                const audioBlob = new Blob(audioChunksRef.current, { type });
+            recorder.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg' });
                 const url = URL.createObjectURL(audioBlob);
                 setRecordedAudio(audioBlob);
                 setAudioPreviewUrl(url);
                 stream.getTracks().forEach(track => track.stop());
             };
 
-            mediaRecorder.start();
+            await recorder.start(stream);
             setIsRecording(true);
             setRecordingDuration(0);
             recordingTimerRef.current = setInterval(() => {
@@ -172,13 +177,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             }, 1000);
 
         } catch (error) {
-            antMessage.error('Не удалось получить доступ к микрофону');
+            console.error('Recording error:', error);
+            antMessage.error('Не удалось начать запись (доступ к микрофону или ошибка кодека)');
         }
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
+        if (recorderRef.current && isRecording) {
+            recorderRef.current.stop();
             setIsRecording(false);
             if (recordingTimerRef.current) {
                 clearInterval(recordingTimerRef.current);

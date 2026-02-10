@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ConfigProvider, Spin } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { SocketProvider } from './contexts/SocketContext';
 import MainLayout from './components/MainLayout';
 import Login from './pages/Login';
 
@@ -155,11 +154,9 @@ const App: React.FC = () => {
     <ConfigProvider locale={ruRU}>
       <AuthProvider>
         <PresenceProvider>
-          <SocketProvider>
-            <Router>
-              <AppRoutes />
-            </Router>
-          </SocketProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
         </PresenceProvider>
       </AuthProvider>
     </ConfigProvider>

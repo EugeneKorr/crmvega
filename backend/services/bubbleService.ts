@@ -6,7 +6,6 @@ import { uploadAvatarFromUrl } from '../utils/storage';
 // import { notifyErrorSubscribers } from '../utils/notifyError'; 
 import { BUBBLE_ID_TO_STATUS } from '../utils/bubbleWebhook';
 import axios from 'axios';
-import { Server } from 'socket.io'; // Type for io
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -62,7 +61,7 @@ class BubbleService {
     }
 
     // --- Message Processing ---
-    async processMessage(payload: BubbleMessagePayload, io?: Server) {
+    async processMessage(payload: BubbleMessagePayload) {
         console.log('[Bubble Service] Incoming message payload:', JSON.stringify(payload, null, 2));
         const {
             lead_id, content, 'Created Date': createdDate, author_type, message_type,
@@ -199,33 +198,8 @@ class BubbleService {
             }
         }
 
-        // Socket Emissions
-        const socketPayload = {
-            ...result,
-            order_status: order_status || 'unsorted',
-            contact_id: finalContactId,
-            main_id: result.main_id || finalMainId
-        };
-
-        if (io) {
-            if (existingMessage) {
-                if (finalContactId) io.to(`contact_${finalContactId}`).emit('message_updated', socketPayload);
-                if (finalOrderId) io.to(`order_${finalOrderId}`).emit('message_updated', socketPayload);
-                io.emit('message_updated_bubble', socketPayload);
-                io.emit('message_updated', socketPayload);
-            } else {
-                if (socketPayload.main_id) io.to(`main_${socketPayload.main_id}`).emit('new_client_message', socketPayload);
-                if (finalContactId) io.to(`contact_${finalContactId}`).emit('new_client_message', socketPayload);
-                if (finalOrderId) io.to(`order_${finalOrderId}`).emit('new_client_message', socketPayload);
-                io.to('crm_users').emit('new_message_global', socketPayload);
-                io.emit('new_message_bubble', socketPayload);
-            }
-            if (finalContactId) io.emit('contact_message', { contact_id: finalContactId, message: result });
-        }
-
         if (!existingMessage) {
-            // @ts-ignore
-            runAutomations('message_received', result, { io }).catch(e => console.error('Auto error', e));
+            runAutomations('message_received', result).catch(e => console.error('Auto error', e));
         }
 
         if (finalContactId && message_type !== 'reaction') {
@@ -235,24 +209,18 @@ class BubbleService {
         return result;
     }
 
-    async updateMessage(id: string | number, body: any, io?: Server) {
+    async updateMessage(id: string | number, body: any) {
         const updateData = { ...body };
         delete updateData.id;
 
         const { data, error } = await supabase.from('messages').update(updateData).eq('id', id).select().single();
         if (error) throw error;
 
-        if (io) {
-            if (data.main_id) io.to(`main_${data.main_id}`).emit('message_updated', data);
-            if (data.contact_id) io.to(`contact_${data.contact_id}`).emit('message_updated', data);
-            io.emit('message_updated_bubble', data);
-            io.emit('message_updated', data);
-        }
         return data;
     }
 
     // --- Order Processing ---
-    async processOrder(payload: any, io?: Server) {
+    async processOrder(payload: any) {
         let data = payload;
         if (data.response?.results?.[0]) data = data.response.results[0];
 
@@ -352,9 +320,7 @@ class BubbleService {
         const { data: newOrder, error } = await supabase.from('orders').insert(orderData).select('*, contact:contacts(name, phone, email)').single();
         if (error) throw error;
 
-        if (io) io.emit('new_order', newOrder);
-        // @ts-ignore
-        runAutomations('order_created', newOrder, { io }).catch(e => console.error('Auto error', e));
+        runAutomations('order_created', newOrder).catch(e => console.error('Auto error', e));
 
         return newOrder;
     }
@@ -425,7 +391,7 @@ class BubbleService {
     }
 
     // --- Status Update ---
-    async processStatusUpdate(leads: any, io?: Server) {
+    async processStatusUpdate(leads: any) {
         if (!leads || !leads.status || !Array.isArray(leads.status)) throw new Error('Invalid payload');
         const updates: any[] = [];
         const errors: any[] = [];
@@ -445,16 +411,14 @@ class BubbleService {
             const { data: updatedOrder, error } = await supabase.from('orders').update({ status: internalStatus }).eq('id', order.id).select('*, contact:contacts(name, phone, email)').single();
             if (error) { errors.push({ item, error: error.message }); continue; }
 
-            if (io) io.emit('order_updated', updatedOrder);
-            // @ts-ignore
-            runAutomations('order_status_changed', updatedOrder, { io }).catch(e => console.error('Auto error', e));
+            runAutomations('order_status_changed', updatedOrder).catch(e => console.error('Auto error', e));
             updates.push({ id: updatedOrder.id, old: order.status, new: internalStatus });
         }
         return { updates, errors };
     }
 
     // --- Notes ---
-    async processNoteToUser(user: any, note: string, io?: Server) {
+    async processNoteToUser(user: any, note: string) {
         let contactId = null;
         const cleanDigits = String(user).replace(/\D/g, '');
         if (cleanDigits.length >= 5) {
@@ -487,7 +451,6 @@ class BubbleService {
                 }).select().single();
                 if (sysMsg) {
                     createdMessages.push(sysMsg);
-                    if (io) io.to(`order_${order.id}`).emit('new_internal_message', sysMsg);
                 }
             }
         }
@@ -499,7 +462,7 @@ class BubbleService {
         return { contact_id: contactId, messages_created: createdMessages.length, note_created: !!noteData };
     }
 
-    async processNoteToOrder(main_id: any, note: string, io?: Server) {
+    async processNoteToOrder(main_id: any, note: string) {
         const { data: order } = await supabase.from('orders').select('id').eq('main_id', main_id).maybeSingle();
         if (!order) throw new Error('Order not found');
 
@@ -509,7 +472,6 @@ class BubbleService {
         }).select().single();
 
         if (error) throw error;
-        if (io) io.to(`order_${order.id}`).emit('new_internal_message', sysMsg);
 
         return { order_id: order.id, message_id: sysMsg.id };
     }

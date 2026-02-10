@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Spin, Empty, message as antMessage } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons';
 import { Message, Order } from '../types';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { UnifiedMessageBubble } from './UnifiedMessageBubble';
 import { ChatInput } from './ChatInput';
@@ -32,6 +34,9 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     const [hasMore, setHasMore] = useState(true);
     const [sending, setSending] = useState(false);
     const [replyTo, setReplyTo] = useState<Message | null>(null);
+    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+    const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
+    const lastTypingSentRef = useRef<number>(0);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -141,10 +146,29 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                     setMessages(prev => prev.map(m => String(m.id) === String(updatedMsg.id) ? { ...m, ...updatedMsg } : m));
                 }
             )
+            .on('broadcast', { event: 'typing' }, (payload) => {
+                const { name } = payload.payload;
+                if (name && manager && name !== (manager.name || manager.email)) {
+                    setTypingUsers(prev => {
+                        const next = new Set(prev);
+                        next.add(name);
+                        return next;
+                    });
+                    setTimeout(() => {
+                        setTypingUsers(prev => {
+                            const next = new Set(prev);
+                            next.delete(name);
+                            return next;
+                        });
+                    }, 3000);
+                }
+            })
             .subscribe();
 
+        broadcastChannelRef.current = channel;
+
         // 2. Presence Subscription
-        let presenceChannel: any = null;
+        let presenceChannel: RealtimeChannel | null = null;
         if (manager) {
             presenceChannel = supabase.channel(`chat_presence:${activeOrder.main_id}`, {
                 config: {
@@ -156,12 +180,12 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
 
             presenceChannel
                 .on('presence', { event: 'sync' }, () => {
-                    const state = presenceChannel.presenceState();
+                    const state = presenceChannel?.presenceState();
+                    if (!state) return;
                     const viewers: { name: string; id: number }[] = [];
                     for (const key in state) {
                         if (key !== String(manager.id)) {
-                            // @ts-ignore
-                            const userState = state[key]?.[0];
+                            const userState = (state as any)[key]?.[0] as { name: string; user_id: number } | undefined;
                             if (userState) {
                                 viewers.push({ name: userState.name, id: userState.user_id });
                             }
@@ -170,7 +194,7 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                     setOtherViewers(viewers);
                 })
                 .subscribe(async (status: string) => {
-                    if (status === 'SUBSCRIBED') {
+                    if (status === 'SUBSCRIBED' && presenceChannel) {
                         await presenceChannel.track({
                             user_id: manager.id,
                             name: manager.name,
@@ -192,6 +216,18 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             isInitialLoadRef.current = false;
         }
     }, [messages.length, isLoadingMessages, loadingMore, scrollToBottom]);
+
+    const handleTyping = async () => {
+        const now = Date.now();
+        if (now - lastTypingSentRef.current > 2000 && manager && broadcastChannelRef.current) {
+            lastTypingSentRef.current = now;
+            await broadcastChannelRef.current.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: { name: manager.name || manager.email }
+            });
+        }
+    };
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const container = e.currentTarget;
@@ -252,10 +288,19 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
 
     // UI for Presence
     const renderPresence = () => {
-        if (otherViewers.length === 0) return null;
+        const typingList = Array.from(typingUsers);
+        if (otherViewers.length === 0 && typingList.length === 0) return null;
+
         return (
-            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8, paddingLeft: 16 }}>
-                Сейчас смотрят: {otherViewers.map(v => v.name).join(', ')}
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8, paddingLeft: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+                {otherViewers.length > 0 && (
+                    <span>Сейчас смотрят: {otherViewers.map(v => v.name).join(', ')}</span>
+                )}
+                {typingList.length > 0 && (
+                    <span style={{ color: '#1890ff', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <LoadingOutlined /> {typingList.join(', ')} {typingList.length === 1 ? 'печатает' : 'печатают'}...
+                    </span>
+                )}
             </div>
         );
     };
@@ -419,6 +464,7 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                         sending={sending}
                         replyTo={replyTo}
                         onCancelReply={() => setReplyTo(null)}
+                        onTyping={handleTyping}
                     />
                 )
             }

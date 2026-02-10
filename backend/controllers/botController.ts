@@ -7,7 +7,7 @@ class BotController {
     async webhook(req: Request, res: Response) {
         try {
             const update = req.body;
-            const io = req.app.get('io');
+            // No io needed
 
             // --- Обработка входящего сообщения ---
             if (update.message) {
@@ -98,7 +98,6 @@ class BotController {
                     telegramUserId,
                     messageText,
                     telegramUserInfo,
-                    io,
                     messageType,
                     attachmentData,
                     replyToMessageId,
@@ -133,12 +132,12 @@ class BotController {
                     }).catch(err => console.error('[bot.js] Error echoing callback:', err.message));
                 }
 
-                await botService.sendMessageToCRM(telegramUserId, messageText, telegramUserInfo, io);
+                await botService.sendMessageToCRM(telegramUserId, messageText, telegramUserInfo);
             }
 
             // --- Обработка реакций ---
             if (update.message_reaction) {
-                await botService.handleReaction(update.message_reaction, io);
+                await botService.handleReaction(update.message_reaction);
             }
 
             res.status(200).end();

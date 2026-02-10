@@ -16,7 +16,6 @@ import {
   Modal,
   Select,
   message,
-  Empty,
   Grid
 } from 'antd';
 import {
@@ -27,20 +26,14 @@ import {
   ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Contact, Order, Note, Message, NOTE_PRIORITIES, ORDER_STATUSES } from '../types';
-import { contactsAPI, ordersAPI, notesAPI, contactMessagesAPI, orderMessagesAPI, messagesAPI } from '../services/api';
+import { Contact, Order, Note, NOTE_PRIORITIES, ORDER_STATUSES } from '../types';
+import { contactsAPI, ordersAPI, notesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { UnifiedMessageBubble } from '../components/UnifiedMessageBubble';
 import { UnifiedContactChat } from '../components/UnifiedContactChat';
-import { ChatInput } from '../components/ChatInput';
-import { formatDate } from '../utils/chatUtils';
-import io from 'socket.io-client';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
-
-type Socket = ReturnType<typeof io>;
 
 const ContactDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -49,122 +42,22 @@ const ContactDetailPage: React.FC = () => {
   const [contact, setContact] = useState<Contact | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
 
   const [activeTab, setActiveTab] = useState('data');
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isNoteModalVisible, setIsNoteModalVisible] = useState(false);
-  const [sending, setSending] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [form] = Form.useForm();
   const [noteForm] = Form.useForm();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const contactRef = useRef<Contact | null>(null);
-
-  useEffect(() => {
-    contactRef.current = contact;
-  }, [contact]);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<Socket | null>(null);
-
 
   useEffect(() => {
     if (id) {
       fetchContact();
       fetchOrders();
       fetchNotes();
-      fetchAllMessages();
-      setupSocket();
     }
-
-    return () => {
-      socketRef.current?.disconnect();
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  useEffect(() => {
-    if (activeTab === 'messages') {
-      scrollToBottom();
-    }
-  }, [messages, activeTab]);
-
-  const setupSocket = () => {
-    if (!id || !manager) return;
-
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
-    socketRef.current = io(socketUrl, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    });
-
-    socketRef.current.on('connect', () => {
-      socketRef.current?.emit('join_contact', id);
-    });
-
-    // Listen for messages specifically for this contact
-    socketRef.current.on('contact_message', (data: { contact_id: number | string; message: Message }) => {
-      const currentContactId = String(id || '0');
-      const incomingContactId = String(data.contact_id);
-
-      // Check against URL param OR resolved internal ID from contact object
-      const isMatch = incomingContactId === currentContactId || (contactRef.current && String(contactRef.current.id) === incomingContactId);
-
-      if (isMatch) {
-        console.log('[ContactDetail] Processing contact_message:', data);
-        setMessages(prev => {
-          const isDuplicate = prev.some(msg => String(msg.id) === String(data.message.id));
-          if (isDuplicate) return prev;
-
-          return [...prev, data.message].sort((a, b) => {
-            const dateA = new Date(a['Created Date'] || a.created_at || 0).getTime();
-            const dateB = new Date(b['Created Date'] || b.created_at || 0).getTime();
-            return dateA - dateB;
-          });
-        });
-      }
-    });
-
-    socketRef.current.on('message_updated', (msg: Message) => {
-      setMessages(prev => prev.map(m => String(m.id) === String(msg.id) ? { ...m, ...msg } : m));
-    });
-
-    const handleReconnect = () => {
-      console.log('Socket reconnected, refreshing messages...');
-      fetchAllMessages();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('Tab became visible, refreshing messages...');
-        fetchAllMessages();
-        if (socketRef.current && !socketRef.current.connected) {
-          socketRef.current.connect();
-        }
-      }
-    };
-
-    socketRef.current.on('connect', handleReconnect);
-    socketRef.current.io.on("reconnect", handleReconnect);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      socketRef.current?.disconnect();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  };
-
-  const scrollToBottom = () => {
-    if (messagesContainerRef.current) {
-      setTimeout(() => {
-        // Use container scroll for better reliability
-        const { scrollHeight, clientHeight } = messagesContainerRef.current!;
-        messagesContainerRef.current!.scrollTop = scrollHeight - clientHeight + 100; // +100 to force bottom
-      }, 50);
-    }
-  };
 
   const fetchContact = async () => {
     if (!id) return;
@@ -200,71 +93,6 @@ const ContactDetailPage: React.FC = () => {
       setNotes(data);
     } catch (error) {
       console.error('Error fetching notes:', error);
-    }
-  };
-
-  const fetchAllMessages = async () => {
-    if (!id) return;
-    try {
-      setSending(true);
-      // 1. Fetch direct contact messages
-      const contactMsgsData = await contactMessagesAPI.getByContactId(parseInt(id));
-      const contactMsgs = contactMsgsData.messages || [];
-
-      // 2. Fetch messages from all orders
-      // We need orders to be loaded first. If not, we fetch them here or rely on passed orders.
-      // Ideally, we fetch orders first.
-      const { orders: contactOrders } = await ordersAPI.getAll({ contact_id: parseInt(id) });
-
-      const orderMessagePromises = contactOrders.map(async (order) => {
-        try {
-          const clientMsgs = await orderMessagesAPI.getClientMessages(order.id);
-          // Add context to messages
-          return clientMsgs.messages.map(m => ({
-            ...m,
-            order_title: order.title,
-            order_id: order.id
-          }));
-        } catch (e) {
-          return [];
-        }
-      });
-
-      const orderMessagesArrays = await Promise.all(orderMessagePromises);
-      const allOrderMessages = orderMessagesArrays.flat();
-
-      // Combine and Remove Duplicates
-      // Duplicates might exist if contact API returns messages that are also linked to orders
-      // or if same message ID appears multiple times.
-      const allRawMessages = [...contactMsgs, ...allOrderMessages];
-      const uniqueMessagesMap = new Map();
-
-      allRawMessages.forEach(msg => {
-        // Use a composite key or ID to detect duplicates.
-        // If IDs are consistent across endpoints:
-        if (msg.id) {
-          uniqueMessagesMap.set(msg.id, msg);
-        } else {
-          // Fallback for missing IDs (unlikely but possible during dev)
-          const key = `${msg.created_at}-${msg.content}`;
-          uniqueMessagesMap.set(key, msg);
-        }
-      });
-
-      const uniqueMessages = Array.from(uniqueMessagesMap.values());
-
-      // Sort by date
-      const sortedMessages = uniqueMessages.sort((a, b) => {
-        const dateA = new Date(a['Created Date'] || a.created_at || 0).getTime();
-        const dateB = new Date(b['Created Date'] || b.created_at || 0).getTime();
-        return dateA - dateB;
-      });
-
-      setMessages(sortedMessages);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    } finally {
-      setSending(false);
     }
   };
 
@@ -305,118 +133,6 @@ const ContactDetailPage: React.FC = () => {
       fetchNotes();
     } catch (error: any) {
       message.error('Ошибка удаления заметки');
-    }
-  };
-
-  const handleAddReaction = async (msg: Message, emoji: string) => {
-    // Optimistic update
-    setMessages(prev => prev.map(m => {
-      if (m.id === msg.id) {
-        const currentReactions = m.reactions || [];
-        return {
-          ...m,
-          reactions: [...currentReactions, {
-            emoji,
-            author: 'Me', // Placeholder
-            created_at: new Date().toISOString()
-          }]
-        };
-      }
-      return m;
-    }));
-
-    try {
-      await messagesAPI.addReaction(msg.id, emoji);
-    } catch (error) {
-      console.error('Error adding reaction:', error);
-      message.error('Не удалось добавить реакцию');
-    }
-  };
-
-  const handleSendText = async (text: string) => {
-    if (!id || !manager) return;
-
-    setSending(true);
-    try {
-      // Находим активную заявку (как в OrderChat)
-      const activeOrder = orders.find(o =>
-        !['completed', 'scammer', 'client_rejected', 'lost'].includes(o.status)
-      ) || orders[0]; // Берём последнюю если нет активной
-
-      if (!activeOrder) {
-        message.error('Нет заявок для отправки сообщения');
-        return;
-      }
-
-      // Отправляем через рабочий API из OrderChat
-      const newMsg = await orderMessagesAPI.sendClientMessage(activeOrder.id, text);
-      // Оптимистичное обновление как в OrderChat
-      setMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
-      scrollToBottom();
-    } catch (error: any) {
-      console.error('Error sending message:', error);
-      message.error(error.response?.data?.error || 'Ошибка отправки сообщения');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleSendVoice = async (voice: Blob, duration: number) => {
-    if (!id || !manager) return;
-    setSending(true);
-    try {
-      const activeOrder = orders.find(o =>
-        !['completed', 'scammer', 'client_rejected', 'lost'].includes(o.status)
-      ) || orders[0];
-
-      if (!activeOrder) {
-        message.error('Нет заявок для отправки сообщения');
-        return;
-      }
-
-      const newMsg = await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration);
-      setMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
-      scrollToBottom();
-    } catch (error: any) {
-      console.error('Error sending voice:', error);
-      message.error('Ошибка отправки голосового');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleSendFile = async (file: File, caption?: string) => {
-    if (!id || !manager) return;
-    setSending(true);
-    try {
-      const activeOrder = orders.find(o =>
-        !['completed', 'scammer', 'client_rejected', 'lost'].includes(o.status)
-      ) || orders[0];
-
-      if (!activeOrder) {
-        message.error('Нет заявок для отправки сообщения');
-        return;
-      }
-
-      const newMsg = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
-      // Оптимистичное обновление с защитой от дублей
-      setMessages(prev => {
-        // Приводим ID к строке для надежного сравнения (вдруг один int другой string)
-        if (prev.some(m => String(m.id) === String(newMsg.id))) return prev;
-        return [...prev, newMsg];
-      });
-      scrollToBottom();
-    } catch (error: any) {
-      console.error('Error sending file:', error);
-      message.error(error.response?.data?.error || 'Ошибка отправки файла');
-    } finally {
-      setSending(false);
     }
   };
 

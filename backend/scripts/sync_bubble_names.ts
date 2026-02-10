@@ -1,7 +1,7 @@
-const axios = require('axios');
-const { createClient } = require('@supabase/supabase-js');
-const dotenv = require('dotenv');
-const path = require('path');
+import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -17,6 +17,21 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+interface BubbleUser {
+    _id: string;
+    TelegramID?: string | number;
+    TelegramUsername?: string;
+    amo_name?: string;
+    AmoName?: string;
+    FirstName?: string;
+    LastName?: string;
+    authentication?: {
+        email?: {
+            email?: string;
+        };
+    };
+}
 
 async function syncUsers() {
     let cursor = 0;
@@ -41,7 +56,7 @@ async function syncUsers() {
                 timeout: 30000
             });
 
-            const users = response.data.response.results || [];
+            const users: BubbleUser[] = response.data.response.results || [];
             const remaining = response.data.response.remaining || 0;
 
             if (users.length === 0) {
@@ -96,7 +111,7 @@ async function syncUsers() {
 
             await new Promise(r => setTimeout(r, 100));
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error in sync loop:', error.message);
             if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
                 console.log('API timed out, retrying this batch in 5 seconds...');

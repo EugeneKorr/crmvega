@@ -49,11 +49,10 @@ class ContactController {
 
     async create(req: Request, res: Response) {
         try {
-            const io = req.app.get('io');
             const manager = (req as any).manager;
             if (!manager) return res.status(401).json({ error: 'Unauthorized' });
 
-            const data = await contactService.create(req.body, manager.id, io);
+            const data = await contactService.create(req.body, manager.id);
             res.json(data);
         } catch (error: any) {
             console.error('Error creating contact:', error);
@@ -86,8 +85,7 @@ class ContactController {
     async markMessagesRead(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const io = req.app.get('io');
-            const result = await contactService.markMessagesRead(id as string, io);
+            const result = await contactService.markMessagesRead(id as string);
             res.json(result);
         } catch (error: any) {
             console.error('Error marking contact messages as read:', error);

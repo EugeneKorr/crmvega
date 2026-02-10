@@ -355,7 +355,6 @@ const aiController = {
             const userRole = manager?.role || 'operator';
             const instructions = await aiService.getInstructions({ ...(req.query as any), userRole });
 
-            // @ts-ignore
             const enriched = instructions.map(inst => ({
                 ...inst,
                 level_info: INSTRUCTION_LEVELS[inst.level],
@@ -411,11 +410,8 @@ const aiController = {
 
             res.json({
                 ...data,
-                // @ts-ignore
                 level_info: INSTRUCTION_LEVELS[data.level],
-                // @ts-ignore
                 can_edit: canEditInstruction(userRole, data.level),
-                // @ts-ignore
                 can_delete: canDeleteInstruction(userRole, data.level)
             });
         } catch (error: any) {

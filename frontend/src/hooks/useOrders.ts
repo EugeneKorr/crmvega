@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { message } from 'antd';
 import { ordersAPI } from '../services/api';
+import { supabase } from '../lib/supabase';
 import { Order, OrderStatus, ORDER_STATUSES } from '../types';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface UseOrdersProps {
     filters: any;
@@ -74,114 +76,66 @@ export const useOrders = ({ filters, visibleStatuses }: UseOrdersProps) => {
 
     // Supabase Realtime Subscription
     useEffect(() => {
-        // Dynamic import to avoid top-level dependency if possible
-        import('../lib/supabase').then(({ supabase }) => {
-            const channel = supabase
-                .channel('orders_updates')
-                .on(
-                    'postgres_changes',
-                    { event: 'INSERT', schema: 'public', table: 'orders' },
-                    async (payload) => {
-                        const newOrderRaw = payload.new as Order;
-                        // Fetch full order to get relations (contact, etc.)
-                        try {
-                            const fullOrder = await ordersAPI.getById(newOrderRaw.id);
-
-                            // Only add if status is visible
-                            if (!visibleStatuses.includes(fullOrder.status)) return;
-
-                            setOrders(prev => {
-                                if (prev.some(d => d.id === fullOrder.id)) return prev;
-                                const updated = [fullOrder, ...prev];
-                                // Update Cache
-                                try {
-                                    localStorage.setItem(CACHE_KEY, JSON.stringify({
-                                        data: updated,
-                                        timestamp: Date.now(),
-                                        statuses: visibleStatuses
-                                    }));
-                                } catch (e) { }
-                                return updated;
-                            });
-                        } catch (e) {
-                            console.error('Error fetching new order details', e);
-                        }
-                    }
-                )
-                .on(
-                    'postgres_changes',
-                    { event: 'UPDATE', schema: 'public', table: 'orders' },
-                    async (payload) => {
-                        const updatedOrderRaw = payload.new as Order;
-                        try {
-                            // Fetch full details
-                            const fullOrder = await ordersAPI.getById(updatedOrderRaw.id);
-
-                            setOrders(prev => {
-                                // If status changed to invisible, remove it
-                                if (!visibleStatuses.includes(fullOrder.status)) {
-                                    const filtered = prev.filter(o => o.id !== fullOrder.id);
-                                    // Update Cache
-                                    try {
-                                        localStorage.setItem(CACHE_KEY, JSON.stringify({
-                                            data: filtered,
-                                            timestamp: Date.now(),
-                                            statuses: visibleStatuses
-                                        }));
-                                    } catch (e) { }
-                                    return filtered;
-                                }
-
-                                const existingIndex = prev.findIndex(o => o.id === fullOrder.id);
-                                let updatedList = [...prev];
-
-                                if (existingIndex !== -1) {
-                                    updatedList[existingIndex] = fullOrder;
-                                } else {
-                                    // If not found but visible, add it
-                                    updatedList = [fullOrder, ...prev];
-                                }
-
-                                // Update Cache
-                                try {
-                                    localStorage.setItem(CACHE_KEY, JSON.stringify({
-                                        data: updatedList,
-                                        timestamp: Date.now(),
-                                        statuses: visibleStatuses
-                                    }));
-                                } catch (e) { }
-                                return updatedList;
-                            });
-                        } catch (e) {
-                            console.error('Error fetching updated order details', e);
-                        }
-                    }
-                )
-                .on(
-                    'postgres_changes',
-                    { event: 'DELETE', schema: 'public', table: 'orders' },
-                    (payload) => {
-                        const id = payload.old.id;
+        const channel = supabase
+            .channel('orders_updates')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'orders' },
+                async (payload: RealtimePostgresChangesPayload<Order>) => {
+                    const newOrderRaw = payload.new as Order;
+                    try {
+                        const fullOrder = await ordersAPI.getById(newOrderRaw.id);
+                        if (!visibleStatuses.includes(fullOrder.status)) return;
                         setOrders(prev => {
-                            const filtered = prev.filter(o => o.id !== id);
-                            // Update cache
-                            try {
-                                localStorage.setItem(CACHE_KEY, JSON.stringify({
-                                    data: filtered,
-                                    timestamp: Date.now(),
-                                    statuses: visibleStatuses
-                                }));
-                            } catch (e) { }
-                            return filtered;
+                            if (prev.some(d => d.id === fullOrder.id)) return prev;
+                            return [fullOrder, ...prev];
                         });
+                    } catch (e) {
+                        console.error('Error fetching new order details', e);
                     }
-                )
-                .subscribe();
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'orders' },
+                async (payload: RealtimePostgresChangesPayload<Order>) => {
+                    const updatedOrderRaw = payload.new as Order;
+                    try {
+                        const fullOrder = await ordersAPI.getById(updatedOrderRaw.id);
+                        setOrders(prev => {
+                            const existingIndex = prev.findIndex(o => o.id === fullOrder.id);
 
-            return () => {
-                supabase.removeChannel(channel);
-            };
-        });
+                            // If not visible, remove
+                            if (!visibleStatuses.includes(fullOrder.status)) {
+                                return prev.filter(o => o.id !== fullOrder.id);
+                            }
+
+                            if (existingIndex !== -1) {
+                                const updatedList = [...prev];
+                                updatedList[existingIndex] = fullOrder;
+                                return updatedList;
+                            } else {
+                                return [fullOrder, ...prev];
+                            }
+                        });
+                    } catch (e) {
+                        console.error('Error fetching updated order details', e);
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'DELETE', schema: 'public', table: 'orders' },
+                (payload: RealtimePostgresChangesPayload<Order>) => {
+                    const id = (payload.old as Order).id;
+                    setOrders(prev => prev.filter(o => o.id !== id));
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [visibleStatuses]);
 
     // Initial Fetch

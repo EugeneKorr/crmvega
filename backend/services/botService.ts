@@ -1,6 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import axios from 'axios';
-import { Server } from 'socket.io';
 import { sendMessageToUser } from '../utils/telegramUtils';
 
 const supabase = createClient(
@@ -147,7 +146,7 @@ class BotService {
         return parseInt(`${Date.now()}${Math.floor(Math.random() * 1000)}`);
     }
 
-    async findOrCreateOrder(contact: any, io: Server | undefined) {
+    async findOrCreateOrder(contact: any) {
         const terminalStatuses = ['completed', 'scammer', 'client_rejected', 'lost'];
 
         // Ищем активную заявку
@@ -196,11 +195,6 @@ class BotService {
 
             if (createOrderError) throw createOrderError;
 
-            // Сообщаем о новой заявке через сокеты
-            if (io) {
-                io.emit('new_order', newOrder);
-            }
-
             return { order: newOrder, isNew: true };
         }
     }
@@ -229,7 +223,7 @@ class BotService {
         return urlData?.publicUrl;
     }
 
-    async createMessage(order: any, content: string, telegramMessageId: number, replyToMessageId: number | null, messageType: string, fileUrl: string | null, io: Server | undefined) {
+    async createMessage(order: any, content: string, telegramMessageId: number, replyToMessageId: number | null, messageType: string, fileUrl: string | null) {
         const linkId = order.main_id;
 
         const { data: savedMessage, error: messageError } = await supabase
@@ -256,22 +250,6 @@ class BotService {
             message_id: savedMessage.id
         });
 
-        // Отправляем события через Socket.IO
-        if (io && savedMessage) {
-            const socketPayload = {
-                ...savedMessage,
-                order_status: order.status
-            };
-
-            io.to(`order_${order.id}`).emit('new_client_message', savedMessage);
-            // Legacy room support
-            io.to(`lead_${linkId}`).emit('new_message', savedMessage);
-            // Global emit for Inbox
-            io.emit('new_message_global', socketPayload);
-            // Emit for specific contact
-            io.emit('contact_message', { contact_id: order.contact_id, message: savedMessage });
-        }
-
         return linkId;
     }
 
@@ -279,7 +257,6 @@ class BotService {
         telegramUserId: number,
         content: string,
         telegramUserInfo: any,
-        io: Server | undefined,
         messageType: string = 'text',
         attachmentData: AttachmentData | null = null,
         replyToMessageId: number | null = null,
@@ -290,7 +267,7 @@ class BotService {
             const contact = await this.findOrCreateContact(telegramUserId, telegramUserInfo);
 
             // 2. Ищем или создаем сделку
-            const { order } = await this.findOrCreateOrder(contact, io);
+            const { order } = await this.findOrCreateOrder(contact);
 
             // 3. Загружаем файл, если есть
             let finalAttachmentUrl: string | null = null;
@@ -299,7 +276,7 @@ class BotService {
             }
 
             // 4. Создаем сообщение
-            const resultId = await this.createMessage(order, content, telegramMessageId || 0, replyToMessageId, messageType, finalAttachmentUrl, io);
+            const resultId = await this.createMessage(order, content, telegramMessageId || 0, replyToMessageId, messageType, finalAttachmentUrl);
 
             return resultId;
 
@@ -309,7 +286,7 @@ class BotService {
         }
     }
 
-    async handleReaction(reaction: any, io: Server | undefined) {
+    async handleReaction(reaction: any) {
         const tgMessageId = reaction.message_id;
         const newReactions = reaction.new_reaction;
 
@@ -355,13 +332,6 @@ class BotService {
                     }
 
                     console.log(`[bot.js] Updated reactions for message ${messageData.id}. Content: "${freshMessage.content}"`);
-
-                    if (io) {
-                        io.emit('message_updated', freshMessage);
-                        if (freshMessage.lead_id) {
-                            io.to(`lead_${freshMessage.lead_id}`).emit('message_updated', freshMessage);
-                        }
-                    }
                 }
             }
         }

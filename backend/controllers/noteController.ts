@@ -26,11 +26,10 @@ class NoteController {
 
     async create(req: Request, res: Response) {
         try {
-            const io = req.app.get('io');
             const manager = (req as any).manager;
             if (!manager) return res.status(401).json({ error: 'Unauthorized' });
 
-            const data = await noteService.create(req.body, manager, io);
+            const data = await noteService.create(req.body, manager);
             res.json(data);
         } catch (error: any) {
             console.error('Error creating note:', error);

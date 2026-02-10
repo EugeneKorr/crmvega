@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { runAutomations } from './automationRunner';
 import { clearCache } from '../utils/cache';
-import { Server } from 'socket.io';
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -230,7 +229,7 @@ class ContactService {
         return contact;
     }
 
-    async create(data: any, managerId: string | number, io?: Server) {
+    async create(data: any, managerId: string | number) {
         const { data: contact, error } = await supabase
             .from('contacts')
             .insert({
@@ -242,10 +241,6 @@ class ContactService {
             .single();
 
         if (error) throw error;
-
-        if (io) {
-            io.emit('new_contact', contact);
-        }
 
         return contact;
     }
@@ -278,7 +273,7 @@ class ContactService {
         return { success: true };
     }
 
-    async markMessagesRead(id: string, io?: Server) {
+    async markMessagesRead(id: string) {
         const { data: orders, error: ordersError } = await supabase
             .from('orders')
             .select('main_id')
@@ -296,10 +291,6 @@ class ContactService {
 
         clearCache('contacts');
         clearCache('orders');
-
-        if (io) {
-            io.emit('messages_read', { contactId: parseInt(id), mainIds, all: false });
-        }
 
         return { success: true, processed: mainIds.length };
     }

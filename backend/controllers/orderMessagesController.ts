@@ -37,14 +37,13 @@ class OrderMessagesController {
 
             const { orderId } = req.params;
             const { content, reply_to_message_id } = req.body;
-            const io = req.app.get('io');
 
             const result = await orderService.sendClientMessage({
                 orderId: orderId as string,
                 content,
                 replyToMessageId: reply_to_message_id,
                 managerId: manager.id
-            }, io);
+            });
 
             res.json(result);
         } catch (error: any) {
@@ -62,7 +61,6 @@ class OrderMessagesController {
 
             const { orderId } = req.params;
             const { caption, reply_to_message_id } = req.body;
-            const io = req.app.get('io');
 
             const result = await orderService.sendClientFile({
                 orderId: orderId as string,
@@ -70,7 +68,7 @@ class OrderMessagesController {
                 caption,
                 replyToMessageId: reply_to_message_id,
                 managerId: manager.id
-            }, io);
+            });
 
             res.json(result);
         } catch (error: any) {
@@ -92,7 +90,6 @@ class OrderMessagesController {
 
             const { orderId } = req.params;
             const { duration, reply_to_message_id } = req.body;
-            const io = req.app.get('io');
 
             const result = await orderService.sendClientVoice({
                 orderId: orderId as string,
@@ -100,7 +97,7 @@ class OrderMessagesController {
                 duration,
                 replyToMessageId: reply_to_message_id,
                 managerId: manager.id
-            }, io);
+            });
 
             res.json(result);
         } catch (error: any) {
@@ -155,14 +152,13 @@ class OrderMessagesController {
 
             const { orderId } = req.params;
             const { content, reply_to_id } = req.body;
-            const io = req.app.get('io');
 
             const result = await orderService.sendInternalMessage({
                 orderId: orderId as string,
                 content,
                 replyToId: reply_to_id,
                 managerId: manager.id
-            }, io);
+            });
 
             res.json(result);
         } catch (error: any) {
@@ -180,14 +176,13 @@ class OrderMessagesController {
 
             const { orderId } = req.params;
             const { reply_to_id } = req.body;
-            const io = req.app.get('io');
 
             const result = await orderService.sendInternalFile({
                 orderId: orderId as string,
                 file: req.file,
                 replyToId: reply_to_id,
                 managerId: manager.id
-            }, io);
+            });
 
             res.json(result);
         } catch (error: any) {
@@ -208,14 +203,13 @@ class OrderMessagesController {
             if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
             const { orderId } = req.params;
             const { duration } = req.body;
-            const io = req.app.get('io');
 
             const result = await orderService.sendInternalVoice({
                 orderId: orderId as string,
                 file: req.file,
                 duration,
                 managerId: manager.id
-            }, io);
+            });
 
             res.json(result);
         } catch (error: any) {

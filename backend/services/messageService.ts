@@ -1,8 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import FormData from 'form-data';
-import { Server } from 'socket.io';
-import { convertToOgg } from '../utils/audioConverter';
 import { sendMessageToUser } from '../utils/telegramUtils';
 
 const supabase = createClient(
@@ -112,7 +110,7 @@ class MessageService {
         return { messages: uniqueMessages, total };
     }
 
-    async sendToContact(contactId: string, content: string, senderType: string, manager: any, io?: Server) {
+    async sendToContact(contactId: string, content: string, senderType: string, manager: any) {
         let targetContactId = contactId;
         const { data: contactResolve } = await supabase.from('contacts').select('id').eq('telegram_user_id', contactId).maybeSingle();
         if (contactResolve) targetContactId = contactResolve.id;
@@ -211,16 +209,10 @@ class MessageService {
             await supabase.from('order_messages').upsert({ order_id: orderId, message_id: message.id }, { onConflict: 'order_id,message_id' });
         }
 
-        if (io) {
-            if (leadId) io.to(`lead_${leadId}`).emit('new_message', message);
-            io.to(`order_${orderId}`).emit('new_message', message);
-            io.emit('contact_message', { contact_id: targetContactId, message });
-        }
-
         return message;
     }
 
-    async sendVoiceToContact(contactId: string, file: any, duration: string, manager: any, io?: Server) {
+    async sendVoiceToContact(contactId: string, file: any, duration: string, manager: any) {
         let targetContactId = contactId;
         const { data: contactResolve } = await supabase.from('contacts').select('id').eq('telegram_user_id', contactId).maybeSingle();
         if (contactResolve) targetContactId = contactResolve.id;
@@ -258,16 +250,13 @@ class MessageService {
             await supabase.from('orders').update({ main_id: leadId }).eq('id', orderId);
         }
 
-        let finalBuffer = file.buffer;
-        try {
-            finalBuffer = await convertToOgg(file.buffer, file.originalname);
-        } catch (e) {
-            console.error('[VoiceContact] Conversion failed:', e);
-        }
+        const finalBuffer = file.buffer;
+        // Assuming client sent OGG Opus
+        const contentType = file.mimetype || 'audio/ogg';
 
         const fileName = `${Date.now()}_voice.ogg`;
         const filePath = `order_files/${orderId}/${fileName}`;
-        await supabase.storage.from('attachments').upload(filePath, finalBuffer, { contentType: 'audio/ogg' });
+        await supabase.storage.from('attachments').upload(filePath, finalBuffer, { contentType });
         const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(filePath);
         const fileUrl = urlData?.publicUrl;
 
@@ -310,16 +299,10 @@ class MessageService {
         await supabase.from('order_messages').upsert({ order_id: orderId, message_id: message.id }, { onConflict: 'order_id,message_id' });
         await supabase.from('contacts').update({ last_message_at: new Date().toISOString() }).eq('id', targetContactId);
 
-        if (io) {
-            if (leadId) io.to(`lead_${leadId}`).emit('new_message', message);
-            io.to(`order_${orderId}`).emit('new_message', message);
-            io.emit('contact_message', { contact_id: targetContactId, message });
-        }
-
         return message;
     }
 
-    async sendFileToContact(contactId: string, file: any, caption: string, manager: any, io?: Server) {
+    async sendFileToContact(contactId: string, file: any, caption: string, manager: any) {
         let targetContactId = contactId;
         const { data: contactResolve } = await supabase.from('contacts').select('id').eq('telegram_user_id', contactId).maybeSingle();
         if (contactResolve) targetContactId = contactResolve.id;
@@ -410,16 +393,10 @@ class MessageService {
         await supabase.from('order_messages').upsert({ order_id: orderId, message_id: message.id }, { onConflict: 'order_id,message_id' });
         await supabase.from('contacts').update({ last_message_at: new Date().toISOString() }).eq('id', targetContactId);
 
-        if (io) {
-            if (leadId) io.to(`lead_${leadId}`).emit('new_message', message);
-            io.to(`order_${orderId}`).emit('new_message', message);
-            io.emit('contact_message', { contact_id: targetContactId, message });
-        }
-
         return message;
     }
 
-    async addReaction(messageId: string, emoji: string, manager: any, io?: Server) {
+    async addReaction(messageId: string, emoji: string, manager: any) {
         const { data: message, error: fetchError } = await supabase
             .from('messages')
             .select('id, reactions, main_id, message_id_tg, content')
@@ -495,10 +472,6 @@ class MessageService {
             } catch (e) {
                 console.error('[Reaction] TG sync error:', e);
             }
-        }
-
-        if (io && updatedMessage.main_id) {
-            io.to(`lead_${updatedMessage.main_id}`).emit('message_updated', updatedMessage);
         }
 
         return updatedMessage;

@@ -4,8 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import FormData from 'form-data';
 import { escapeMarkdownV2 } from '../utils/telegramUtils';
-import { convertToOgg } from '../utils/audioConverter';
-import { Server } from 'socket.io'; // Type for io
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -62,7 +60,7 @@ class OrderMessagesService {
         };
     }
 
-    async sendClientMessage({ orderId, content, replyToMessageId, managerId }: MessagePayload, io?: Server) {
+    async sendClientMessage({ orderId, content, replyToMessageId, managerId }: MessagePayload) {
         if (!content || !content.trim()) throw new Error('Сообщение не может быть пустым');
 
         const { data: order, error: orderError } = await supabase
@@ -174,20 +172,10 @@ class OrderMessagesService {
             message_id: savedMessage.id
         });
 
-        if (io) {
-            const messageWithContact = { ...savedMessage, contact_id: order.contact_id };
-            if (order.main_id) io.to(`main_${order.main_id}`).emit('new_message', messageWithContact);
-            io.to(`order_${orderId}`).emit('new_client_message', messageWithContact);
-            if (order.contact_id) io.to(`contact_${order.contact_id}`).emit('new_message', messageWithContact);
-
-            // Глобальное уведомление для всех crm_users (для счетчиков в меню)
-            io.to('crm_users').emit('new_message_global', messageWithContact);
-        }
-
         return savedMessage;
     }
 
-    async sendClientFile({ orderId, file, caption, replyToMessageId, managerId }: FilePayload, io?: Server) {
+    async sendClientFile({ orderId, file, caption, replyToMessageId, managerId }: FilePayload) {
         const { data: order, error: orderError } = await supabase
             .from('orders')
             .select('id, contact_id, main_id')
@@ -283,15 +271,10 @@ class OrderMessagesService {
 
         await supabase.from('order_messages').insert({ order_id: parseInt(String(orderId)), message_id: savedMessage.id });
 
-        if (io) {
-            if (order.main_id) io.to(`main_${order.main_id}`).emit('new_message', savedMessage);
-            io.to(`order_${orderId}`).emit('new_client_message', savedMessage);
-        }
-
         return savedMessage;
     }
 
-    async sendClientVoice({ orderId, file, duration, replyToMessageId, managerId }: FilePayload, io?: Server) {
+    async sendClientVoice({ orderId, file, duration, replyToMessageId, managerId }: FilePayload) {
         const { data: order, error: orderError } = await supabase
             .from('orders')
             .select('id, contact_id, main_id')
@@ -299,17 +282,10 @@ class OrderMessagesService {
             .single();
         if (orderError) throw orderError;
 
-        // Convert to OGG
         const inputBuffer = fs.readFileSync(file.path);
-        let finalBuffer = inputBuffer;
-        const finalContentType = 'audio/ogg';
+        const finalBuffer = inputBuffer;
+        const finalContentType = file.mimetype || 'audio/ogg'; // Default to OGG if missing
         const finalFileName = `${Date.now()}_voice.ogg`;
-
-        try {
-            finalBuffer = await convertToOgg(inputBuffer, file.originalname) as any;
-        } catch (e) {
-            console.error('Audio conversion failed', e);
-        }
 
         const filePath = `order_files/${orderId}/${finalFileName}`;
         const { error: uploadError } = await supabase.storage
@@ -330,8 +306,6 @@ class OrderMessagesService {
                 try {
                     const formData = new FormData();
                     formData.append('chat_id', contact.telegram_user_id);
-                    // We must upload BUFFER to Telegram if we converted it in memory
-                    // But FormData with buffer requires options.
                     formData.append('voice', finalBuffer, { filename: 'voice.ogg', contentType: 'audio/ogg' });
                     if (duration) formData.append('duration', duration);
                     if (replyToMessageId) formData.append('reply_to_message_id', replyToMessageId);
@@ -367,11 +341,6 @@ class OrderMessagesService {
         if (saveError) throw saveError;
 
         await supabase.from('order_messages').insert({ order_id: parseInt(String(orderId)), message_id: savedMessage.id });
-
-        if (io) {
-            if (order.main_id) io.to(`main_${order.main_id}`).emit('new_message', savedMessage);
-            io.to(`order_${orderId}`).emit('new_client_message', savedMessage);
-        }
 
         return savedMessage;
     }
@@ -418,7 +387,7 @@ class OrderMessagesService {
         return { messages: (data || []).reverse(), total: count || 0 };
     }
 
-    async sendInternalMessage({ orderId, content, replyToId, managerId }: { orderId: string | number; content: string; replyToId?: string | number; managerId: string | number }, io?: Server) {
+    async sendInternalMessage({ orderId, content, replyToId, managerId }: { orderId: string | number; content: string; replyToId?: string | number; managerId: string | number }) {
         const { data, error } = await supabase
             .from('internal_messages')
             .insert({
@@ -436,15 +405,10 @@ class OrderMessagesService {
 
         if (error) throw error;
 
-        if (io) {
-            io.to(`order_${orderId}`).emit('new_internal_message', data);
-            io.emit('internal_message', { order_id: orderId, message: data });
-        }
-
         return data;
     }
 
-    async sendInternalFile({ orderId, file, replyToId, managerId }: FilePayload, io?: Server) {
+    async sendInternalFile({ orderId, file, replyToId, managerId }: FilePayload) {
         const fileName = `${Date.now()}_${file.originalname}`;
         const filePath = `internal_files/${orderId}/${fileName}`;
 
@@ -473,24 +437,14 @@ class OrderMessagesService {
 
         if (error) throw error;
 
-        if (io) {
-            io.to(`order_${orderId}`).emit('new_internal_message', data);
-        }
-
         return data;
     }
 
-    async sendInternalVoice({ orderId, file, duration, managerId }: FilePayload, io?: Server) {
+    async sendInternalVoice({ orderId, file, duration, managerId }: FilePayload) {
         const inputBuffer = fs.readFileSync(file.path);
-        let finalBuffer = inputBuffer;
-        const finalContentType = 'audio/ogg';
+        const finalBuffer = inputBuffer;
+        const finalContentType = file.mimetype || 'audio/ogg';
         const finalFileName = `${Date.now()}_voice_internal.ogg`;
-
-        try {
-            finalBuffer = await convertToOgg(inputBuffer, file.originalname) as any;
-        } catch (e) {
-            console.error('Audio conversion failed', e);
-        }
 
         const filePath = `internal_files/${orderId}/${finalFileName}`;
         await supabase.storage.from('attachments').upload(filePath, finalBuffer, { contentType: finalContentType });
@@ -510,7 +464,6 @@ class OrderMessagesService {
 
         if (error) throw error;
 
-        if (io) io.to(`order_${orderId}`).emit('new_internal_message', data);
         return data;
     }
 

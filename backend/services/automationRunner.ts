@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { Server } from 'socket.io'; // Assuming options.io is Server type
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -26,17 +25,12 @@ interface AutomationEntity {
     [key: string]: any; // Allow loose access for dynamic field checks
 }
 
-interface AutomationOptions {
-    io?: Server;
-}
-
 /**
  * Выполнить автоматизации для триггера
  * @param triggerType - Тип триггера (deal_created, deal_status_changed, etc.)
  * @param entity - Объект сущности (deal, contact, message)
- * @param options - Дополнительные опции (io для Socket.IO)
  */
-export async function runAutomations(triggerType: string, entity: AutomationEntity, options: AutomationOptions = {}): Promise<void> {
+export async function runAutomations(triggerType: string, entity: AutomationEntity): Promise<void> {
     try {
         // Получаем активные автоматизации для этого триггера
         const { data: automations, error } = await supabase
@@ -74,7 +68,7 @@ export async function runAutomations(triggerType: string, entity: AutomationEnti
                     }
 
                     // Выполняем действие
-                    await executeAction(automation.action_type, actionConfig, entity, options);
+                    await executeAction(automation.action_type, actionConfig, entity);
                 }
             } catch (error) {
                 console.error(`Error executing automation ${automation.id}:`, error);
@@ -133,7 +127,7 @@ function checkTriggerConditions(conditions: any, entity: AutomationEntity): bool
 /**
  * Выполнение действия автоматизации
  */
-export async function executeAction(actionType: string, actionConfig: any, entity: AutomationEntity, options: AutomationOptions = {}): Promise<void> {
+export async function executeAction(actionType: string, actionConfig: any, entity: AutomationEntity): Promise<void> {
     switch (actionType) {
         case 'assign_manager':
             // Назначить менеджера на сделку/контакт
@@ -235,31 +229,10 @@ export async function executeAction(actionType: string, actionConfig: any, entit
             break;
 
         case 'send_notification':
-            // Отправить уведомление через Socket.IO
-            if (options.io && actionConfig.message) {
-                const managerId = actionConfig.manager_id || entity.manager_id;
-                // Use loose check for manager existence
-
-                if (managerId) {
-                    // @ts-ignore - Assuming io is Socket.IO Server
-                    options.io.to(`user_${managerId}`).emit('automation_notification', {
-                        message: actionConfig.message,
-                        type: actionConfig.notification_type || 'info',
-                        entity_type: entity.title ? 'deal' : entity.name ? 'contact' : 'message',
-                        entity_id: entity.id,
-                    });
-                } else {
-                    // Отправляем всем менеджерам
-                    // @ts-ignore
-                    options.io.emit('automation_notification', {
-                        message: actionConfig.message,
-                        type: actionConfig.notification_type || 'info',
-                        entity_type: entity.title ? 'deal' : entity.name ? 'contact' : 'message',
-                        entity_id: entity.id,
-                    });
-                }
-            } else {
+            // Отправить уведомление (Socket.IO удален)
+            if (actionConfig.message) {
                 console.log('Notification action:', actionConfig.message);
+                // TODO: Implement Supabase notification system if needed
             }
             break;
 

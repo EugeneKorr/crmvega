@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { message as antMessage } from 'antd';
 import { orderMessagesAPI, messagesAPI } from '../services/api';
-import { useSocket } from '../contexts/SocketContext';
-import { Message, InternalMessage } from '../types';
+import { Message } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 
 interface TimelineMessage extends Message {
     source_type?: 'client' | 'internal';
@@ -19,9 +20,13 @@ interface TimelineMessage extends Message {
     };
 }
 
+// Helper to determine if message is from client
+const isClientMessage = (type?: string) => {
+    return ['user', 'client', 'customer', 'Клиент'].includes(type || '');
+};
+
 export const useOrderChat = (orderId: number, mainId?: string, contactId?: number) => {
     const { manager } = useAuth();
-    const { socket } = useSocket();
 
     const [messages, setMessages] = useState<TimelineMessage[]>([]);
     const [loading, setLoading] = useState(false);
@@ -107,13 +112,14 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             display_author: mode === 'internal' ? (manager?.name || 'Вы') : 'Менеджер',
             author_type: mode === 'internal' ? 'manager' : 'user',
             isPending: true,
-            lead_id: String(orderId),
+            main_id: String(orderId),
             file_url: file ? URL.createObjectURL(file) : undefined,
             reply_to: replyTo ? {
                 id: replyTo.id,
                 content: replyTo.content,
                 author_name: replyTo.display_author
-            } : undefined
+            } : undefined,
+            sender: manager || undefined
         };
 
         // 2. Add to UI immediately
@@ -143,7 +149,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                     await orderMessagesAPI.sendInternalMessage(orderId, content, replyId);
                 }
             }
-            // Success: the real message will arrive via socket and deduplicate tempId
+            // Success: the real message will arrive via Supabase Realtime and deduplicate tempId
             return true;
         } catch (error: any) {
             const serverError = error?.response?.data?.error || error?.message || 'Неизвестная ошибка';
@@ -177,65 +183,116 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         } catch (e) { console.error(e); }
     };
 
-    // Socket
+    // Subscriptions
     useEffect(() => {
-        if (!socket) return;
+        if (!orderId) return;
 
-        socket.emit('join_order', orderId.toString());
-        if (mainId) socket.emit('join_main', mainId);
-        if (contactId) socket.emit('join_contact', contactId.toString());
+        // Fetch user cache helper
+        const fetchSenderIfNeeded = async (managerId?: number | string): Promise<any> => {
+            if (!managerId) return null;
+            // Simple approach: You could cache managers in a context or store. 
+            // For now, we assume manager info comes with initial load, 
+            // but for realtime events we might miss it.
+            // If sender is current user, we have it.
+            if (String(managerId) === String(manager?.id)) return manager;
+            return null; // or fetch user API?
+        };
 
         const handleNewMessage = (msg: TimelineMessage) => {
             setMessages(prev => {
-                // Deduplication: check if message ID already exists
+                // Deduplication
                 if (prev.some(m => m.id === msg.id && m.source_type === msg.source_type)) return prev;
 
-                // If it's our own message coming back, remove the pending one
+                // If it's our own message coming back, remove the pending one match by content usually
+                // But simplified: 
                 const filtered = prev.filter(m => !(m.isPending && m.content === msg.content && m.source_type === msg.source_type));
-                return [...filtered, msg]; // Append at end (ascending order)
+                return [...filtered, msg];
             });
         };
 
-        const handleClientMsg = (msg: any) => {
-            const matchesMainId = mainId && msg.main_id && String(msg.main_id) === String(mainId);
-            const matchesContactId = contactId && msg.contact_id && Number(msg.contact_id) === Number(contactId);
-            if (matchesMainId || matchesContactId) {
-                handleNewMessage({ ...msg, source_type: 'client', sort_date: msg['Created Date'] || msg.created_at, display_author: 'Клиент' });
-            }
-        };
+        const channel = supabase.channel(`order_timeline:${orderId}`)
+            // 1. Client Messages (table: messages)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: mainId ? `main_id=eq.${mainId}` : undefined
+                },
+                async (payload: RealtimePostgresInsertPayload<Message>) => {
+                    const newMsg = payload.new;
+                    // Need to map to TimelineMessage
+                    // Note: payload.new does NOT include joins (sender).
+                    // We might need to fetch the full message or approximate.
+                    // For now, let's try to construct it.
 
-        const handleInternalMsg = (msg: any) => {
-            if (msg.order_id && Number(msg.order_id) === Number(orderId)) {
-                handleNewMessage({
-                    ...msg,
-                    source_type: 'internal',
-                    sort_date: msg.created_at,
-                    is_system: msg.attachment_type === 'system',
-                    display_author: msg.sender?.name || 'Система',
-                    author_type: msg.sender?.name || 'Manager'
-                });
-            }
-        };
+                    // IMPORTANT: If author_type is manager, we need sender.
+                    // If we are the sender, we know who we are.
+                    const isOwn = String(newMsg.manager_id) === String(manager?.id);
+                    const sender = isOwn ? manager : undefined; // We miss other managers info here without fetch!
 
-        const handleUpdate = (updatedMsg: Message) => {
-            setMessages(prev => prev.map(m => Number(m.id) === Number(updatedMsg.id) ? { ...m, ...updatedMsg, content: updatedMsg.content || m.content } : m));
-        };
+                    const timelineMsg: TimelineMessage = {
+                        ...newMsg,
+                        source_type: 'client',
+                        sort_date: newMsg['Created Date'] || newMsg.created_at,
+                        display_author: isClientMessage(newMsg.author_type) ? 'Клиент' : (sender?.name || 'Менеджер'),
+                        sender: sender || undefined
+                    };
+                    handleNewMessage(timelineMsg);
+                }
+            )
+            // 2. Internal Messages (table: internal_messages)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'internal_messages',
+                    filter: `order_id=eq.${orderId}`
+                },
+                (payload: RealtimePostgresInsertPayload<any>) => {
+                    const newMsg = payload.new;
+                    const isOwn = String(newMsg.sender_id) === String(manager?.id);
+                    const sender = isOwn ? manager : undefined;
 
-        socket.on('new_client_message', handleClientMsg);
-        socket.on('new_internal_message', handleInternalMsg);
-        socket.on('new_message_bubble', (msg: any) => {
-            if (mainId && String(msg.main_id) === String(mainId)) {
-                handleNewMessage({ ...msg, source_type: 'client', sort_date: msg['Created Date'], display_author: 'Клиент' });
-            }
-        });
-        socket.on('message_updated', (msg: any) => handleUpdate(msg));
+                    const timelineMsg: TimelineMessage = {
+                        ...newMsg,
+                        source_type: 'internal',
+                        sort_date: newMsg.created_at,
+                        is_system: newMsg.attachment_type === 'system',
+                        display_author: (sender?.name || 'Система'),
+                        author_type: 'manager',
+                        sender: sender || undefined,
+                        message_type: 'text' // default
+                    };
+                    handleNewMessage(timelineMsg);
+                }
+            )
+            // 3. Updates (e.g. reactions, is_read)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: mainId ? `main_id=eq.${mainId}` : undefined
+                },
+                (payload: RealtimePostgresUpdatePayload<Message>) => {
+                    const updated = payload.new;
+                    setMessages(prev => prev.map(m =>
+                        (String(m.id) === String(updated.id) && m.source_type === 'client')
+                            ? { ...m, ...updated, content: updated.content || m.content }
+                            : m
+                    ));
+                }
+            )
+            .subscribe();
 
         return () => {
-            socket.emit('leave_order', orderId.toString());
-            socket.off('new_client_message', handleClientMsg);
-            socket.off('new_internal_message', handleInternalMsg);
+            supabase.removeChannel(channel);
         };
-    }, [socket, orderId, mainId, contactId]);
+    }, [orderId, mainId, manager]);
 
     return {
         messages,

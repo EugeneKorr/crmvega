@@ -1,13 +1,14 @@
-/**
- * Тестовый скрипт для проверки сохранения telegram_message_id
- * 
- * Этот скрипт проверяет:
- * 1. Отправку сообщения через sendMessageToUser возвращает messageId
- * 2. Сохранение message_id_tg в базу данных при отправке через /contact/:contactId
- */
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
 
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
+// Load env
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('Missing Supabase credentials in .env');
+    process.exit(1);
+}
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -29,9 +30,9 @@ async function checkRecentMessages() {
         return;
     }
 
-    console.log(`✅ Найдено ${messages.length} сообщений с telegram_message_id:\n`);
+    console.log(`✅ Найдено ${messages?.length || 0} сообщений с telegram_message_id:\n`);
 
-    messages.forEach((msg, idx) => {
+    messages?.forEach((msg: any, idx: number) => {
         console.log(`${idx + 1}. ID: ${msg.id}`);
         console.log(`   Content: "${msg.content.substring(0, 50)}..."`);
         console.log(`   Author: ${msg.author_type}`);
@@ -54,10 +55,10 @@ async function checkRecentMessages() {
         return;
     }
 
-    if (brokenMessages.length > 0) {
+    if (brokenMessages && brokenMessages.length > 0) {
         console.log(`\n⚠️  Найдено ${brokenMessages.length} сообщений менеджеров БЕЗ telegram_message_id:\n`);
 
-        brokenMessages.forEach((msg, idx) => {
+        brokenMessages.forEach((msg: any, idx: number) => {
             console.log(`${idx + 1}. ID: ${msg.id}`);
             console.log(`   Content: "${msg.content.substring(0, 50)}..."`);
             console.log(`   Author: ${msg.author_type}`);

@@ -4,7 +4,6 @@ import { runAutomations } from './automationRunner';
 import { sendBubbleStatusWebhook } from '../utils/bubbleWebhook';
 import { ordersCache, generateCacheKey, clearCache } from '../utils/cache';
 import { ORDER_STATUSES, StatusDefinition } from '../utils/statuses';
-import { Server } from 'socket.io';
 
 const supabase = createClient(
     process.env.SUPABASE_URL || '',
@@ -142,9 +141,7 @@ class OrdersService {
         if (!data) return null;
 
         // Форматирование
-        // @ts-ignore
         data.tags = data.tags?.map((t: any) => t.tag).filter(Boolean) || [];
-        // @ts-ignore
         data.amount = parseFloat(data.SumInput) || 0;
 
         return data;
@@ -153,7 +150,7 @@ class OrdersService {
     /**
      * Создать новую заявку
      */
-    async create(orderData: OrderData, manager: Manager, io?: Server) {
+    async create(orderData: OrderData, manager: Manager) {
         const {
             contact_id, title, amount, currency, status, source,
             description, type, main_id
@@ -163,7 +160,6 @@ class OrdersService {
             .from('orders')
             .insert({
                 contact_id,
-                // @ts-ignore
                 OrderName: title,
                 SumInput: amount,
                 CurrPair1: currency || 'RUB',
@@ -181,15 +177,12 @@ class OrdersService {
 
         // Side effects
         clearCache('orders');
-        this._runCreationSideEffects(data, manager, io);
+        this._runCreationSideEffects(data, manager);
 
         return data;
     }
 
-    /**
-     * Обновить заявку
-     */
-    async update(id: string | number, updateFields: UpdateOrderFields, manager: Manager, io?: Server) {
+    async update(id: string | number, updateFields: UpdateOrderFields, manager: Manager) {
         const numericId = parseInt(String(id));
         let lookupField = 'id';
         let lookupValue = numericId;
@@ -237,15 +230,12 @@ class OrdersService {
 
         // 4. Side Effects
         clearCache('orders');
-        await this._runUpdateSideEffects(data, oldOrder, updateData, manager, io);
+        await this._runUpdateSideEffects(data, oldOrder, updateData, manager);
 
         return data;
     }
 
-    /**
-     * Удалить заявку
-     */
-    async delete(id: string | number, io?: Server) {
+    async delete(id: string | number) {
         const { error } = await supabase
             .from('orders')
             .delete()
@@ -254,13 +244,9 @@ class OrdersService {
         if (error) throw error;
 
         clearCache('orders');
-        if (io) io.emit('order_deleted', { id: parseInt(String(id)) });
         return true;
     }
 
-    /**
-     * Очистить "Неразобранное"
-     */
     async clearUnsorted(manager: Manager) {
         const { error, count } = await supabase
             .from('orders')
@@ -273,10 +259,7 @@ class OrdersService {
         return count;
     }
 
-    /**
-     * Массовое обновление статуса
-     */
-    async bulkUpdateStatus(ids: (number | string)[], status: string, manager: Manager, io?: Server) {
+    async bulkUpdateStatus(ids: (number | string)[], status: string, manager: Manager) {
         if (!Array.isArray(ids) || ids.length === 0) throw new Error('ids must be a non-empty array');
         if (!ids.every(id => Number.isInteger(Number(id)))) throw new Error('ids must contain valid identifiers');
 
@@ -299,7 +282,7 @@ class OrdersService {
             await Promise.all(updatedOrders.map(async (newOrder) => {
                 const oldOrder = oldOrders?.find(o => o.id === newOrder.id);
                 if (oldOrder && oldOrder.status !== status) {
-                    await this._runStatusChangeSideEffects(newOrder, oldOrder, manager, io);
+                    await this._runStatusChangeSideEffects(newOrder, oldOrder, manager);
                 }
             }));
         }
@@ -307,10 +290,7 @@ class OrdersService {
         return updatedOrders?.length || 0;
     }
 
-    /**
-     * Массовое удаление
-     */
-    async bulkDelete(ids: (number | string)[], io?: Server) {
+    async bulkDelete(ids: (number | string)[]) {
         if (!Array.isArray(ids) || ids.length === 0) throw new Error('ids must be a non-empty array');
 
         const { error, count } = await supabase
@@ -321,15 +301,9 @@ class OrdersService {
         if (error) throw error;
 
         clearCache('orders');
-        if (io) {
-            ids.forEach(id => io.emit('order_deleted', { id: parseInt(String(id)) }));
-        }
         return count;
     }
 
-    /**
-     * Получить количество непрочитанных
-     */
     async getUnreadCount(managerId: string | number) {
         const { data: manager } = await supabase
             .from('managers')
@@ -338,7 +312,6 @@ class OrdersService {
             .single();
 
         const settings = manager?.notification_settings || {};
-        // @ts-ignore
         const { all_active, statuses } = settings;
 
         const { data: unreadData } = await supabase
@@ -452,57 +425,50 @@ class OrdersService {
         return processed;
     }
 
-    async _runCreationSideEffects(data: any, manager: Manager, io?: Server) {
+    async _runCreationSideEffects(data: any, manager: Manager) {
         try {
-            // @ts-ignore
-            runAutomations('order_created', data, { io }).catch(console.error);
+            runAutomations('order_created', data).catch(console.error);
             if (data.SumInput && parseFloat(data.SumInput) > 0) {
-                // @ts-ignore
-                runAutomations('order_amount_threshold', data, { io }).catch(console.error);
+                runAutomations('order_amount_threshold', data).catch(console.error);
             }
 
             // System Message
             const managerName = manager.name || manager.email;
             const timestamp = new Date().toLocaleString('ru-RU');
             const systemContent = `✨ ${managerName} создал заявку ${timestamp}`;
-            await this._createSystemMessage(data.id, manager.id, systemContent, io);
+            await this._createSystemMessage(data.id, manager.id, systemContent);
 
-            if (io) io.emit('new_order', data);
         } catch (e) {
             console.error('Creation side effects error:', e);
         }
     }
 
-    async _runUpdateSideEffects(data: any, oldOrder: any, updateData: any, manager: Manager, io?: Server) {
+    async _runUpdateSideEffects(data: any, oldOrder: any, updateData: any, manager: Manager) {
         const managerName = manager.name || manager.email;
         const changes = [];
 
         // Status
         if (updateData.status && updateData.status !== oldOrder.status) {
-            await this._runStatusChangeSideEffects(data, oldOrder, manager, io);
+            await this._runStatusChangeSideEffects(data, oldOrder, manager);
         }
 
         // Other fields (System Messages)
         if (updateData.SumInput !== undefined && parseFloat(updateData.SumInput) !== parseFloat(oldOrder.SumInput || 0)) {
-            await this._createSystemMessage(data.id, manager.id, `💰 ${managerName} изменил сумму: ${updateData.SumInput} (было: ${oldOrder.SumInput || 0})`, io);
+            await this._createSystemMessage(data.id, manager.id, `💰 ${managerName} изменил сумму: ${updateData.SumInput} (было: ${oldOrder.SumInput || 0})`);
         }
         if (updateData.CurrPair1 && updateData.CurrPair1 !== oldOrder.CurrPair1) {
-            await this._createSystemMessage(data.id, manager.id, `💱 ${managerName} изменил валюту отдачи: ${updateData.CurrPair1} (было: ${oldOrder.CurrPair1 || '-'})`, io);
+            await this._createSystemMessage(data.id, manager.id, `💱 ${managerName} изменил валюту отдачи: ${updateData.CurrPair1} (было: ${oldOrder.CurrPair1 || '-'})`);
         }
-        // ... (Repeated for other fields like manager_id, OrderName, etc. - abbreviated for brevity but should be full in implementation)
-
-        if (io) io.emit('order_updated', data);
     }
 
-    async _runStatusChangeSideEffects(newOrder: any, oldOrder: any, manager: Manager, io?: Server) {
+    async _runStatusChangeSideEffects(newOrder: any, oldOrder: any, manager: Manager) {
         const oldLabel = ORDER_STATUSES[oldOrder.status]?.label || oldOrder.status;
         const newLabel = ORDER_STATUSES[newOrder.status]?.label || newOrder.status;
         const managerName = manager.name || manager.email;
 
-        await this._createSystemMessage(newOrder.id, manager.id, `🔄 ${managerName} смена этапа: ${newLabel} (было: ${oldLabel})`, io);
+        await this._createSystemMessage(newOrder.id, manager.id, `🔄 ${managerName} смена этапа: ${newLabel} (было: ${oldLabel})`);
 
-        // @ts-ignore
-        runAutomations('order_status_changed', newOrder, { io }).catch(console.error);
+        runAutomations('order_status_changed', newOrder).catch(console.error);
 
         if (newOrder.main_id) {
             sendBubbleStatusWebhook({
@@ -511,20 +477,16 @@ class OrdersService {
                 oldStatus: oldOrder.status
             }).catch(console.error);
         }
-
-        if (io) io.emit('order_updated', newOrder);
     }
 
-    async _createSystemMessage(orderId: number | string, managerId: number | string, content: string, io?: Server) {
-        const { data: sysMsg } = await supabase.from('internal_messages').insert({
+    async _createSystemMessage(orderId: number | string, managerId: number | string, content: string) {
+        await supabase.from('internal_messages').insert({
             order_id: orderId,
             sender_id: managerId,
             content,
             is_read: false,
             attachment_type: 'system'
-        }).select().single();
-
-        if (sysMsg && io) io.to(`order_${orderId}`).emit('new_internal_message', sysMsg);
+        });
     }
 }
 

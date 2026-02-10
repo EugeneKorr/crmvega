@@ -314,7 +314,6 @@ const aiService = {
             .not('category', 'is', null);
 
         if (error) throw error;
-        // @ts-ignore
         const categories = [...new Set(data.map((d: any) => d.category))].filter(Boolean);
         return { categories };
     },
@@ -547,7 +546,6 @@ const aiService = {
             .not('section', 'is', null);
 
         if (error) throw error;
-        // @ts-ignore
         const sections = [...new Set(data.map((d: any) => d.section))].filter(Boolean);
 
         // Add 'chat_templates' manually as it's now special
@@ -658,7 +656,6 @@ const aiService = {
         if (operator_id) {
             const { data: styleData } = await dataset()
                 .from('operator_styles')
-                // @ts-ignore
                 .select('operator_name, style_data')
                 .eq('telegram_user_id', operator_id)
                 .single();
@@ -802,7 +799,6 @@ const aiService = {
             .not('category', 'is', null);
 
         if (error) throw error;
-        // @ts-ignore
         const categories = [...new Set(data.map((d: any) => d.category))].filter(Boolean);
         return { categories };
     },

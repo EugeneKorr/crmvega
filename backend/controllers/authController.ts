@@ -33,7 +33,6 @@ class AuthController {
     async forgotPassword(req: Request, res: Response) {
         try {
             const result = await authService.requestPasswordReset(req.body.email);
-            // @ts-ignore
             if (result.success) {
                 res.json(result);
             } else {

@@ -39,9 +39,8 @@ class MessageController {
             const { contactId } = req.params;
             const { content, sender_type } = req.body;
             const manager = (req as any).manager;
-            const io = req.app.get('io');
 
-            const message = await messageService.sendToContact(contactId as string, content, sender_type, manager, io);
+            const message = await messageService.sendToContact(contactId as string, content, sender_type, manager);
             res.json(message);
         } catch (error: any) {
             console.error('Error sending message to contact:', error);
@@ -54,12 +53,11 @@ class MessageController {
             const { contactId } = req.params;
             const { duration } = req.body;
             const manager = (req as any).manager;
-            const io = req.app.get('io');
             const file = req.file;
 
             if (!file) return res.status(400).json({ error: 'File not found' });
 
-            const message = await messageService.sendVoiceToContact(contactId as string, file, duration, manager, io);
+            const message = await messageService.sendVoiceToContact(contactId as string, file, duration, manager);
             res.json(message);
         } catch (error: any) {
             console.error('Error sending voice to contact:', error);
@@ -72,12 +70,11 @@ class MessageController {
             const { contactId } = req.params;
             const { caption } = req.body;
             const manager = (req as any).manager;
-            const io = req.app.get('io');
             const file = req.file;
 
             if (!file) return res.status(400).json({ error: 'File not found' });
 
-            const message = await messageService.sendFileToContact(contactId as string, file, caption, manager, io);
+            const message = await messageService.sendFileToContact(contactId as string, file, caption, manager);
             res.json(message);
         } catch (error: any) {
             console.error('Error sending file to contact:', error);
@@ -90,9 +87,8 @@ class MessageController {
             const { id } = req.params;
             const { emoji } = req.body;
             const manager = (req as any).manager;
-            const io = req.app.get('io');
 
-            const message = await messageService.addReaction(id as string, emoji, manager, io);
+            const message = await messageService.addReaction(id as string, emoji, manager);
             res.json(message);
         } catch (error: any) {
             console.error('Error adding reaction:', error);

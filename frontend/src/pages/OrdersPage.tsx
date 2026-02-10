@@ -45,7 +45,7 @@ import { Badge } from 'antd';
 const { Title } = Typography;
 const { Option } = Select;
 
-type Socket = ReturnType<typeof io>;
+
 
 // Цвета для верхней полоски колонки
 const COLUMN_COLORS: Record<string, string> = {
@@ -375,8 +375,6 @@ const OrdersPage: React.FC = () => {
   }), [selectedRowKeys]);
 
   const [activeMobileColumn, setActiveMobileColumn] = useState<OrderStatus>('unsorted');
-  // const socketRef = useRef<Socket | null>(null); // Removed local ref
-  // const { socket } = useSocket(); // Handled by hook
   const kanbanRef = useRef<HTMLDivElement>(null);
   // Refs for each column to scroll to them accurately
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});

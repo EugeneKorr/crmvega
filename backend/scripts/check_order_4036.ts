@@ -1,6 +1,9 @@
-const { createClient } = require('@supabase/supabase-js');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Assuming backend/.env
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load env
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error('Missing Supabase credentials in .env');
@@ -16,7 +19,7 @@ async function checkOrder() {
     console.log('Checking order #4036...');
 
     // Check by ID
-    const { data: byId, error: errId } = await supabase
+    const { data: byId } = await supabase
         .from('orders')
         .select('*')
         .eq('id', 4036)
@@ -33,7 +36,7 @@ async function checkOrder() {
     }
 
     // Check by Main ID just in case
-    const { data: byMainId, error: errMain } = await supabase
+    const { data: byMainId } = await supabase
         .from('orders')
         .select('*')
         .eq('main_id', 4036)

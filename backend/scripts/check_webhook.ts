@@ -1,14 +1,16 @@
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../frontend/.env') }); // Try frontend .env first
+import axios from 'axios';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load env
+dotenv.config({ path: path.join(__dirname, '../../frontend/.env') }); // Try frontend .env first
 if (!process.env.TELEGRAM_BOT_TOKEN) {
-    require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Try backend .env
+    dotenv.config({ path: path.join(__dirname, '../.env') }); // Try backend .env
 }
 if (!process.env.TELEGRAM_BOT_TOKEN) {
     // Try to find ANY .env in root
-    require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+    dotenv.config({ path: path.join(__dirname, '../../.env') });
 }
-
-const axios = require('axios');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -22,6 +24,6 @@ axios.get(url)
     .then(res => {
         console.log('Webhook Info:', JSON.stringify(res.data, null, 2));
     })
-    .catch(err => {
+    .catch((err: any) => {
         console.error('Error fetching webhook info:', err.message);
     });
