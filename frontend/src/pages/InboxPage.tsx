@@ -80,14 +80,14 @@ const InboxPage: React.FC = () => {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'messages' },
                 () => {
-                    fetchContacts(); // Refresh list on any message change
+                    fetchContacts(true); // Background refresh
                 }
             )
             .on(
                 'postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'contacts' },
                 () => {
-                    fetchContacts();
+                    fetchContacts(true); // Background refresh
                 }
             )
             .subscribe();
@@ -121,8 +121,8 @@ const InboxPage: React.FC = () => {
         };
     }, [manager]);
 
-    const fetchContacts = async () => {
-        setIsLoadingContacts(true);
+    const fetchContacts = async (isBackground = false) => {
+        if (!isBackground) setIsLoadingContacts(true);
         try {
             const params: any = {};
             if (showUnreadOnly) params.unread = true;
@@ -142,9 +142,9 @@ const InboxPage: React.FC = () => {
             }
         } catch (error) {
             console.error('Error fetching contacts:', error);
-            antMessage.error('Ошибка загрузки контактов');
+            if (!isBackground) antMessage.error('Ошибка загрузки контактов');
         } finally {
-            setIsLoadingContacts(false);
+            if (!isBackground) setIsLoadingContacts(false);
         }
     };
 
