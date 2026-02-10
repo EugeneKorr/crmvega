@@ -72,6 +72,10 @@ class BubbleService {
             if (order) {
                 finalOrderId = order.id;
                 finalContactId = order.contact_id;
+            } else {
+                // Fallback: try to find contact directly via any order that might have this main_id or lead_id
+                const { data: anyOrder } = await supabase.from('orders').select('contact_id').eq('main_id', finalMainId).limit(1).maybeSingle();
+                if (anyOrder) finalContactId = anyOrder.contact_id;
             }
         }
 
@@ -79,6 +83,13 @@ class BubbleService {
             const { data: contact } = await supabase.from('contacts').select('id').eq('telegram_user_id', String(telegram_user_id)).maybeSingle();
             if (contact) finalContactId = contact.id;
         }
+
+        if (!finalContactId && lead_id) {
+            const { data: orderById } = await supabase.from('orders').select('contact_id').eq('main_id', this.sanitizeNumeric(lead_id)).limit(1).maybeSingle();
+            if (orderById) finalContactId = orderById.contact_id;
+        }
+
+        console.log('[Bubble Service] Final resolved contact_id:', finalContactId);
 
         const safeContent = (processedContent === 'null' || !processedContent) ? '' : processedContent;
         let autoFileUrl = finalFileUrl;

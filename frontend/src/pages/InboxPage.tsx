@@ -90,13 +90,23 @@ const InboxPage: React.FC = () => {
         const handleNewMessage = (msg: any) => {
             console.log('📨 SOCKET EVENT: new_message/new_client_message received', msg);
 
-            const contact_id = msg.contact_id;
+            let contact_id = msg.contact_id;
             console.log('📨 Target contact_id:', contact_id);
 
             const messageTime = msg.created_at || msg['Created Date'] || new Date().toISOString();
 
             setContacts(prev => {
+                // FALLBACK: If contact_id is missing but main_id is present, try to find contact in list
+                if (!contact_id && msg.main_id) {
+                    const matchedContact = prev.find(c => String(c.latest_order_main_id) === String(msg.main_id));
+                    if (matchedContact) {
+                        console.log('📨 Found contact via main_id fallback:', matchedContact.id);
+                        contact_id = matchedContact.id;
+                    }
+                }
+
                 const contactExists = prev.some(c => c.id === contact_id);
+                // ... rest of logic...
 
                 if (!contactExists) {
                     console.warn(`📨 Contact ${contact_id} not found in the left list!`);
@@ -165,6 +175,15 @@ const InboxPage: React.FC = () => {
 
         socket.on('new_message', handleNewMessage);
         socket.on('new_client_message', handleNewMessage);
+        socket.on('new_message_global', handleNewMessage); // Fallback global
+        socket.on('contact_message', (data: any) => {
+            console.log('📨 SOCKET EVENT: contact_message received', data);
+            if (data.message) {
+                // Assign contact_id from wrapper if missing in message
+                const msg = { ...data.message, contact_id: data.contact_id || data.message.contact_id };
+                handleNewMessage(msg);
+            }
+        });
         socket.on('message_updated', handleMessageUpdated);
         socket.on('connect', handleReconnect);
 
@@ -186,6 +205,8 @@ const InboxPage: React.FC = () => {
             console.log('🔌 Cleaning up socket listeners');
             socket.off('new_message', handleNewMessage);
             socket.off('new_client_message', handleNewMessage);
+            socket.off('new_message_global', handleNewMessage);
+            socket.off('contact_message');
             socket.off('message_updated', handleMessageUpdated);
             socket.off('connect', handleReconnect);
         };
