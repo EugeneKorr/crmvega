@@ -168,7 +168,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     };
 
     const renderAttachment = () => {
-        const effectiveFileUrl = msg.file_url || (
+        const effectiveFileUrl = msg.file_url || msg.attachment_url || (msg as any).attachment_url_internal || (
             (/^https?:\/\/[^\s]+$/i.test(msg.content?.trim() || ''))
                 ? msg.content?.trim()
                 : null
@@ -300,7 +300,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                                 {isPending ? (
                                     <ClockCircleOutlined style={{ animation: 'spin 2s linear infinite' }} />
                                 ) : (
-                                    isOwn && <span style={{ color: isRight ? 'white' : '#1890ff' }}>✓</span>
+                                    isOwn && <span style={{ color: isRight ? 'white' : '#1890ff', fontWeight: 'bold' }}>✓</span>
                                 )}
                             </>
                         )}
@@ -310,16 +310,24 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                         <div style={{
                             cursor: 'pointer',
                             position: 'absolute',
-                            right: isRight ? 'auto' : -24,
-                            left: isRight ? -24 : 'auto',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            opacity: 0.6,
-                            padding: '4px',
-                            fontSize: 16,
-                            color: '#8c8c8c'
-                        }}>
-                            ⋮
+                            right: isRight ? 'auto' : -32,
+                            left: isRight ? -32 : 'auto',
+                            top: 0,
+                            opacity: menuOpen ? 1 : 0.4,
+                            background: menuOpen ? '#f0f0f0' : 'rgba(0,0,0,0.03)',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            transition: 'all 0.2s',
+                            zIndex: 10,
+                            border: '1px solid transparent'
+                        }}
+                            className="message-menu-trigger"
+                        >
+                            <span style={{ fontSize: 20, marginBottom: 4 }}>⋮</span>
                         </div>
                     </Popover>
                 </div>
@@ -355,6 +363,10 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
                 .message-bubble-container:hover .message-hover-actions {
                     display: flex !important;
+                }
+                .message-bubble-container:hover .message-menu-trigger {
+                    opacity: 1 !important;
+                    background: #f0f0f0 !important;
                 }
             `}</style>
         </div>

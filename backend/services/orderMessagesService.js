@@ -145,6 +145,7 @@ class OrderMessagesService {
                 manager_id: managerId,
                 is_read: true,
                 message_id_tg: telegramMessageId,
+                reply_to_mess_id_tg: replyToMessageId,
                 status: messageStatus,
                 error_message: errorMessage
             })
@@ -227,6 +228,7 @@ class OrderMessagesService {
                 manager_id: managerId,
                 is_read: true,
                 message_id_tg: telegramMessageId,
+                reply_to_mess_id_tg: replyToMessageId,
                 status: telegramMessageId ? 'delivered' : 'error',
                 attachment_url: fileUrl,
                 attachment_type: file.mimetype.startsWith('image') ? 'image' : 'file',
@@ -312,6 +314,7 @@ class OrderMessagesService {
                 manager_id: managerId,
                 is_read: true,
                 message_id_tg: telegramMessageId,
+                reply_to_mess_id_tg: replyToMessageId,
                 status: telegramMessageId ? 'delivered' : 'error',
                 attachment_url: fileUrl,
                 attachment_type: 'voice',

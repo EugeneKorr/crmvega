@@ -181,7 +181,8 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             main_id: activeOrder.main_id,
             manager_id: manager.id,
             status: 'pending' as any,
-            reply_to_mess_id_tg: replyTo?.message_id_tg
+            reply_to_mess_id_tg: replyTo?.message_id_tg,
+            reply_to_id: replyTo?.id
         };
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
@@ -211,12 +212,17 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             is_read: true,
             main_id: activeOrder.main_id,
             status: 'pending' as any,
-            voice_duration: duration
+            voice_duration: duration,
+            attachment_url_internal: URL.createObjectURL(voice),
+            reply_to_mess_id_tg: replyTo?.message_id_tg,
+            reply_to_id: replyTo?.id
         };
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
+        const currentReplyTo = replyTo;
+        setReplyTo(null);
         try {
-            await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration);
+            await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration, Number(currentReplyTo?.message_id_tg) || undefined);
         } catch (error) {
             setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
             antMessage.error('Ошибка отправки ГС');
@@ -239,12 +245,16 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             is_read: true,
             main_id: activeOrder.main_id,
             status: 'pending' as any,
-            attachment_url: URL.createObjectURL(file)
+            attachment_url_internal: URL.createObjectURL(file), // Support image preview instantly
+            reply_to_mess_id_tg: replyTo?.message_id_tg,
+            reply_to_id: replyTo?.id
         };
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
+        const currentReplyTo = replyTo;
+        setReplyTo(null);
         try {
-            await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
+            await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption, Number(currentReplyTo?.message_id_tg) || undefined);
         } catch (error: any) {
             setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
             antMessage.error('Ошибка отправки файла');

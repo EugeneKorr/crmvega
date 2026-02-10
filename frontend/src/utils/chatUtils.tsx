@@ -3,7 +3,7 @@ import React from 'react';
 // Determine if message is from client
 export const isClientMessage = (authorType?: string): boolean => {
     if (!authorType) return false;
-    const clientTypes = ['Клиент', 'user', 'client'];
+    const clientTypes = ['Клиент', 'user', 'client', 'customer'];
     return clientTypes.includes(authorType);
 };
 

@@ -42,6 +42,7 @@ export interface Message {
   attachment_type?: string;
   attachment_name?: string;
   caption?: string;
+  attachment_url_internal?: string;
 
   // Replis and context
   reply_to_mess_id_tg?: number | string;
