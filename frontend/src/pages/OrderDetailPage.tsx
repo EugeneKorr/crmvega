@@ -453,59 +453,6 @@ const OrderDetailPage: React.FC = () => {
                 >
                   Назад
                 </Button>
-
-                {/* Presence Indicator */}
-                {(() => {
-                  const otherViewers = Object.values(onlineUsers).filter(
-                    (u: PresenceState) => u.viewing_order_id === id && String(u.user_id) !== String(manager?.id)
-                  );
-
-                  if (otherViewers.length === 0) return null;
-
-                  const names = otherViewers.map(u => u.name.split(' ')[0]).join(', ');
-                  const isPlural = otherViewers.length > 1;
-
-                  return (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      marginLeft: 12,
-                      padding: '4px 12px',
-                      background: 'rgba(255, 255, 255, 0.15)',
-                      borderRadius: '20px',
-                      backdropFilter: 'blur(4px)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                    }}>
-                      {/* Pulsing Green Dot */}
-                      <div className="pulse-dot" style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        backgroundColor: '#52c41a',
-                        marginRight: 8,
-                        boxShadow: '0 0 0 rgba(82, 196, 26, 0.4)',
-                      }} />
-
-                      <Text style={{ color: 'white', fontSize: 13, fontWeight: 500 }}>
-                        <span style={{ opacity: 0.9 }}>{names}</span>
-                        <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 4 }}>
-                          {isPlural ? 'просматривают' : 'просматривает'}
-                        </span>
-                      </Text>
-
-                      <style>{`
-                      .pulse-dot {
-                        animation: pulse 2s infinite;
-                      }
-                      @keyframes pulse {
-                        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.7); }
-                        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(82, 196, 26, 0); }
-                        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(82, 196, 26, 0); }
-                      }
-                    `}</style>
-                    </div>
-                  );
-                })()}
               </div>
 
               <div style={{ width: '100%' }}>
@@ -552,14 +499,60 @@ const OrderDetailPage: React.FC = () => {
               </div>
             </Space>
 
+            {/* Presence Indicator moved to the right */}
+            {(() => {
+              const otherViewers = Object.values(onlineUsers).filter(
+                (u: PresenceState) => u.viewing_order_id === id && String(u.user_id) !== String(manager?.id)
+              );
+
+              if (otherViewers.length === 0) return null;
+
+              const names = otherViewers.map(u => u.name.split(' ')[0]).join(', ');
+              const isPlural = otherViewers.length > 1;
+
+              return (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px 12px',
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  borderRadius: '16px',
+                  backdropFilter: 'blur(4px)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}>
+                  <div className="pulse-dot" style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    backgroundColor: '#52c41a',
+                    marginRight: 8,
+                  }} />
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 400 }}>
+                    <span style={{ opacity: 0.9 }}>{names}</span>
+                    <span style={{ opacity: 0.7, marginLeft: 4 }}>
+                      {isPlural ? 'просматривают' : 'просматривает'}
+                    </span>
+                  </Text>
+                  <style>{`
+                    .pulse-dot { animation: pulse 2s infinite; }
+                    @keyframes pulse {
+                      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.7); }
+                      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(82, 196, 26, 0); }
+                      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(82, 196, 26, 0); }
+                    }
+                  `}</style>
+                </div>
+              );
+            })()}
+
             <Button
               type="primary"
               icon={<EditOutlined />}
               onClick={() => setIsEditModalVisible(true)}
               style={{
-                background: 'rgba(255,255,255,0.2)',
-                border: 'none',
-                borderRadius: 8,
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white'
               }}
             >
               Редактировать
