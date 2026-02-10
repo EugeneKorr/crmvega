@@ -52,6 +52,8 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
   // Input mode: 'client' (default) or 'internal'
   const [inputMode, setInputMode] = useState<'client' | 'internal'>('client');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const previousScrollHeightRef = useRef<number>(0);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -66,15 +68,35 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
     fetchTimeline(false);
   }, [fetchTimeline]);
 
-  // Scroll on new messages (simple implementation)
+  // Scroll on new messages (only on initial load)
   useEffect(() => {
-    // If we are at the bottom or it's initial load, scroll. 
-    // For now, just scroll on length change if near bottom or validation needed.
-    // But simple approach: scroll on initial load (messages changed from 0 to N)
     if (!loading && !loadingMore && messages.length > 0 && messages.length <= 50) {
       scrollToBottom();
     }
   }, [messages.length, loading, loadingMore, scrollToBottom]);
+
+  // Infinite scroll: load more when scrolling near top
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.scrollTop < 100 && hasMore && !loadingMore && !loading) {
+      // Save scroll position before loading
+      previousScrollHeightRef.current = container.scrollHeight;
+      fetchTimeline(true);
+    }
+  };
+
+  // Restore scroll position after loading old messages
+  useEffect(() => {
+    if (loadingMore || !messagesContainerRef.current) return;
+
+    const container = messagesContainerRef.current;
+    const newScrollHeight = container.scrollHeight;
+    const scrollDiff = newScrollHeight - previousScrollHeightRef.current;
+
+    if (scrollDiff > 0) {
+      container.scrollTop = scrollDiff;
+    }
+  }, [messages.length, loadingMore]);
 
   // Replacements logic
   const replacements: Record<string, string> = order ? {
@@ -122,22 +144,9 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
 
     return (
       <>
-        {hasMore && (
+        {loadingMore && (
           <div style={{ textAlign: 'center', marginBottom: 16 }}>
-            <button
-              onClick={() => fetchTimeline(true)}
-              disabled={loadingMore}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#1890ff',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontSize: '13px'
-              }}
-            >
-              {loadingMore ? 'Загрузка...' : 'Загрузить предыдущие'}
-            </button>
+            <span style={{ fontSize: '13px', color: '#999' }}>Загрузка...</span>
           </div>
         )}
 
@@ -256,7 +265,11 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 4px' : 16 }}>
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 4px' : 16 }}
+      >
         {loading && messages.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
         ) : messages.length === 0 ? (
