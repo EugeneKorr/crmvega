@@ -147,16 +147,20 @@ const AppRoutes: React.FC = () => {
   );
 };
 
+import { PresenceProvider } from './context/PresenceContext';
+
 const App: React.FC = () => {
   console.log('🚀 ТЕСТОВАЯ СРЕДА (STAGING)');
   return (
     <ConfigProvider locale={ruRU}>
       <AuthProvider>
-        <SocketProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
-        </SocketProvider>
+        <PresenceProvider>
+          <SocketProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </SocketProvider>
+        </PresenceProvider>
       </AuthProvider>
     </ConfigProvider>
   );

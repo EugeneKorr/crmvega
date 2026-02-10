@@ -38,6 +38,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useOrder } from '../hooks/useOrder';
 import OrderChat from '../components/OrderChat';
 import { OrderTags } from '../components/OrderTags';
+import { usePresence, PresenceState } from '../context/PresenceContext';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
@@ -46,6 +47,7 @@ const OrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { manager } = useAuth();
+  const { onlineUsers, viewingOrder } = usePresence();
   // Notes state remains local for now
   const [notes, setNotes] = useState<Note[]>([]);
 
@@ -71,7 +73,8 @@ const OrderDetailPage: React.FC = () => {
   useEffect(() => {
     if (id) {
       fetchNotes();
-      // Order fetch is handled by hook
+      viewingOrder(id);
+      return () => viewingOrder(null);
     }
   }, [id]);
 
@@ -442,14 +445,36 @@ const OrderDetailPage: React.FC = () => {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <Space size="middle" style={{ width: '100%' }}>
-              <Button
-                ghost
-                icon={<ArrowLeftOutlined />}
-                onClick={() => navigate('/orders')}
-                style={{ border: '1px solid rgba(255,255,255,0.5)' }}
-              >
-                Назад
-              </Button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Button
+                  icon={<ArrowLeftOutlined />}
+                  onClick={() => navigate('/orders')}
+                  className="back-button"
+                >
+                  Назад
+                </Button>
+
+                {/* Presence Indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', marginLeft: 8 }}>
+                  <Avatar.Group maxCount={3} size="small">
+                    {Object.values(onlineUsers)
+                      .filter((u: PresenceState) => u.viewing_order_id === id && String(u.user_id) !== String(manager?.id))
+                      .map((u: PresenceState) => (
+                        <Avatar
+                          key={u.user_id}
+                          style={{ backgroundColor: '#87d068' }}
+                        >
+                          {u.name.charAt(0).toUpperCase()}
+                        </Avatar>
+                      ))}
+                  </Avatar.Group>
+                  {Object.values(onlineUsers).some((u: PresenceState) => u.viewing_order_id === id && String(u.user_id) !== String(manager?.id)) && (
+                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                      также просматривают
+                    </Text>
+                  )}
+                </div>
+              </div>
 
               <div style={{ width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
