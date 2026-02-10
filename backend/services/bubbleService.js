@@ -105,6 +105,10 @@ class BubbleService {
             finalPayloadContent = '';
         }
 
+        console.log('[Bubble Service] Raw telegram_user_id from payload:', payload.telegram_user_id);
+        const finalTelegramUserId = this.sanitizeNumeric(payload.telegram_user_id);
+        console.log('[Bubble Service] Sanitized telegram_user_id:', finalTelegramUserId);
+
         const messageData = {
             lead_id: this.sanitizeNumeric(lead_id) || (finalMainId ? String(finalMainId).trim() : null),
             main_id: finalMainId,
@@ -124,7 +128,7 @@ class BubbleService {
             order_status: order_status || null,
             file_url: autoFileUrl,
             file_name: finalFileName,
-            telegram_user_id: this.sanitizeNumeric(telegram_user_id || payload['Telegram User ID'] || payload['Telegram_User_ID'] || payload['telegram_id'] || payload['user_id']),
+            telegram_user_id: finalTelegramUserId,
             ...(finalReactions !== undefined && { reactions: finalReactions }),
         };
 
