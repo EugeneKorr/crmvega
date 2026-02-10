@@ -347,7 +347,11 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                                     {isPending ? (
                                         <ClockCircleOutlined style={{ animation: 'spin 2s linear infinite' }} />
                                     ) : (
-                                        isOwn && <span style={{ color: isRight ? 'white' : '#1890ff', fontWeight: 'bold' }}>✓</span>
+                                        isOwn && (
+                                            <span style={{ color: isRight ? 'white' : '#1890ff', fontWeight: 'bold', fontSize: 10 }}>
+                                                {msg.is_read ? '✓✓' : '✓'}
+                                            </span>
+                                        )
                                     )}
                                 </>
                             )}

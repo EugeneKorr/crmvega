@@ -363,6 +363,7 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                             msg={msg}
                             replyMessage={replyCtx}
                             isOwn={isOwn}
+                            isPending={msg.status === 'pending'}
                             variant="client"
                             onAddReaction={handleAddReaction}
                             onReply={(m) => setReplyTo(m)}
