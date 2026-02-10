@@ -155,6 +155,9 @@ io.on('connection', (socket) => {
       if (error) throw error;
 
       // Отправляем сообщение всем в комнате main_id
+      // mainId is essentially leadId in this context (based on schema)
+      const mainId = leadId;
+
       if (mainId) {
         io.to(`main_${mainId}`).emit('new_message', savedMessage);
       }
