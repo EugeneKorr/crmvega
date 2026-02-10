@@ -52,11 +52,6 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                 });
             } else {
                 setMessages(fetched);
-                // Mark read on initial load
-                try {
-                    orderMessagesAPI.markAsRead(orderId);
-                    orderMessagesAPI.markClientMessagesAsRead(orderId);
-                } catch (e) { }
             }
 
             setHasMore(response.meta.has_more);
@@ -66,7 +61,16 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             if (!loadMore) setLoading(false);
             else setLoadingMore(false);
         }
-    }, [orderId]); // Only depend on orderId
+    }, [orderId]);
+
+    // Mark as read ONLY once when orderId changes, not on every fetch
+    useEffect(() => {
+        if (!orderId) return;
+        try {
+            orderMessagesAPI.markAsRead(orderId);
+            orderMessagesAPI.markClientMessagesAsRead(orderId);
+        } catch (e) { }
+    }, [orderId]);
 
     // Actions
     const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number) => {

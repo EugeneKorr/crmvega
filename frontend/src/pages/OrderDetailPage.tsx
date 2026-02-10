@@ -134,6 +134,7 @@ const OrderDetailPage: React.FC = () => {
       color: value.color,
     }));
 
+  // Render logic simplified to prevent full unmount on every load/update
   if (!order && !loading) {
     return (
       <div style={{
@@ -170,7 +171,7 @@ const OrderDetailPage: React.FC = () => {
     );
   }
 
-  if (loading) {
+  if (!order && loading) {
     return (
       <div style={{
         display: 'flex',
@@ -191,7 +192,7 @@ const OrderDetailPage: React.FC = () => {
     );
   }
 
-  if (!order) return null; // Should be covered by Not Found check, but satisfies TS
+  if (!order) return null;
 
   const clean = (val: any) => {
     if (val === null || val === undefined) return null;
