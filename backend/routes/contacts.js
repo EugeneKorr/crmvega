@@ -390,6 +390,12 @@ router.post('/:id/read-messages', auth, async (req, res) => {
     clearCache('contacts');
     clearCache('orders');
 
+    // 4. Emit WebSocket event to update unread counters on all clients
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('messages_read', { contactId: parseInt(id), mainIds, all: false });
+    }
+
     res.json({ success: true, processed: mainIds.length });
   } catch (error) {
     console.error('Error marking contact messages as read:', error);
