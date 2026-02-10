@@ -229,15 +229,24 @@ const InboxPage: React.FC = () => {
             )}
 
             {(isMobile && selectedContact || !isMobile) && (
-                <Content style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: '#fff' }}>
+                <Content style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    height: '100%',
+                    minHeight: 0,
+                    background: '#fff',
+                    position: 'relative'
+                }}>
                     {selectedContact ? (
-                        <>
+                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0 }}>
                             <div style={{
                                 padding: '12px 16px',
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
                                 borderBottom: '1px solid #f0f0f0',
+                                flexShrink: 0,
                                 zIndex: 1,
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -274,7 +283,7 @@ const InboxPage: React.FC = () => {
                                 isMobile={isMobile}
                                 style={{ flex: 1, minHeight: 0 }}
                             />
-                        </>
+                        </div>
                     ) : (
                         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f5f5f5' }}>
                             <Empty description={isMobile ? "Выберите диалог" : "Выберите диалог из списка слева"} />
