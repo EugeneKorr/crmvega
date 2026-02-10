@@ -24,16 +24,12 @@ export const getAvatarColor = (authorType?: string): string => {
     return colors[authorType] || '#8c8c8c';
 };
 
-// Helper to safely parse date to UTC if needed
-const parseDate = (date: string | number): Date => {
-    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(date)) {
-        // If ISO string has no timezone, assume UTC (common backend issue)
-        return new Date(date + 'Z');
-    }
+// Parse date string safely
+export const parseDate = (date: string | number | Date): Date => {
+    if (date instanceof Date) return date;
+    if (!date) return new Date();
     return new Date(date);
 };
-
-// Format time
 export const formatTime = (date?: string | number): string => {
     if (!date) return '';
     const d = parseDate(date);
