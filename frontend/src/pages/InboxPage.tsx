@@ -150,8 +150,9 @@ const InboxPage: React.FC = () => {
 
                 console.log('📨 Sorting contacts...');
 
-                // Sort by last_active to move the updated contact to the top
-                const sorted = updated.sort((a, b) => {
+                // IMPORTANT: Create a NEW array before sorting to trigger React re-render
+                // Array.sort() mutates the array, which React may not detect as a state change
+                const sorted = [...updated].sort((a, b) => {
                     const timeA = new Date(a.last_active || 0).getTime();
                     const timeB = new Date(b.last_active || 0).getTime();
                     return timeB - timeA;
