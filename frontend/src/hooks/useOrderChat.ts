@@ -115,7 +115,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                     await orderMessagesAPI.sendClientVoice(orderId, voice, voiceDuration, replyId);
                 } else if (file) {
                     await orderMessagesAPI.sendClientFile(orderId, file, content, replyId);
-                } else {
+                } else if (content && content.trim()) {
                     await orderMessagesAPI.sendClientMessage(orderId, content, replyId);
                 }
             } else {
@@ -126,7 +126,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                 } else if (file) {
                     await orderMessagesAPI.sendInternalFile(orderId, file, replyId);
                     if (content) await orderMessagesAPI.sendInternalMessage(orderId, content, replyId);
-                } else {
+                } else if (content && content.trim()) {
                     await orderMessagesAPI.sendInternalMessage(orderId, content, replyId);
                 }
             }

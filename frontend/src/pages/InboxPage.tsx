@@ -26,6 +26,7 @@ import {
 import { UnifiedMessageBubble } from '../components/UnifiedMessageBubble';
 import { ChatInput } from '../components/ChatInput';
 import { formatDate, formatTime, isClientMessage } from '../utils/chatUtils';
+import { useOrderChat } from '../hooks/useOrderChat';
 
 const { Content, Sider } = Layout;
 const { Text, Title } = Typography;
@@ -44,9 +45,7 @@ const InboxPage: React.FC = () => {
     const [contacts, setContacts] = useState<ExtendedInboxContact[]>([]);
     const [selectedContact, setSelectedContact] = useState<ExtendedInboxContact | null>(null);
     const [activeOrder, setActiveOrder] = useState<Order | null>(null); // Активная заявка контакта
-    const [messages, setMessages] = useState<Message[]>([]);
     const [isLoadingContacts, setIsLoadingContacts] = useState(false);
-    const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sending, setSending] = useState(false);
 
@@ -56,8 +55,14 @@ const InboxPage: React.FC = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const selectedContactRef = useRef<number | null>(null);
 
-    const [totalMessages, setTotalMessages] = useState(0);
-    const [loadingMore, setLoadingMore] = useState(false);
+    const {
+        messages,
+        loading: isLoadingMessages,
+        loadingMore,
+        hasMore,
+        sendMessage: hookSendMessage,
+        fetchTimeline
+    } = useOrderChat(activeOrder?.id || 0, activeOrder?.main_id, selectedContact?.id);
 
     // Initial load & URL params
     useEffect(() => {
@@ -86,129 +91,15 @@ const InboxPage: React.FC = () => {
 
     useEffect(() => {
         if (!socket) return;
-
-        const handleNewMessage = (msg: any) => {
-            console.log('📨 SOCKET EVENT: new_message/new_client_message received', msg);
-
-            let contact_id = msg.contact_id;
-            console.log('📨 Target contact_id:', contact_id);
-
-            const messageTime = msg.created_at || msg['Created Date'] || new Date().toISOString();
-
-            setContacts(prev => {
-                // FALLBACK: If contact_id is missing but main_id is present, try to find contact in list
-                if (!contact_id && msg.main_id) {
-                    const matchedContact = prev.find(c => String(c.latest_order_main_id) === String(msg.main_id));
-                    if (matchedContact) {
-                        console.log('📨 Found contact via main_id fallback:', matchedContact.id);
-                        contact_id = matchedContact.id;
-                    }
-                }
-
-                const contactExists = prev.some(c => c.id === contact_id);
-                // ... rest of logic...
-
-                if (!contactExists) {
-                    console.warn(`📨 Contact ${contact_id} not found in the left list!`);
-                    return prev;
-                }
-
-                console.log(`📨 Updating contact ${contact_id} in list...`);
-                // Update existing contact
-                const updated = prev.map(c => {
-                    if (c.id === contact_id) {
-                        return {
-                            ...c,
-                            last_message: msg,
-                            last_message_at: messageTime,
-                            last_active: messageTime,
-                            unread_count: (selectedContactRef.current === c.id) ? 0 : (c.unread_count || 0) + 1
-                        };
-                    }
-                    return c;
-                });
-
-                const sorted = [...updated].sort((a, b) => {
-                    const timeA = new Date(a.last_active || 0).getTime();
-                    const timeB = new Date(b.last_active || 0).getTime();
-                    return timeB - timeA;
-                });
-
-                return sorted;
-            });
-
-            // Update current chat if open
-            if (activeOrder && (String(msg.main_id) === String(activeOrder.main_id))) {
-                console.log('📨 Updating active chat (main_id match)');
-                setMessages(prev => {
-                    if (prev.some(m => String(m.id) === String(msg.id))) return prev;
-                    return [...prev, msg];
-                });
-                scrollToBottom();
-            } else if (selectedContactRef.current === contact_id) {
-                console.log('📨 Updating active chat (contact_id match)');
-                setMessages(prev => {
-                    if (prev.some(m => String(m.id) === String(msg.id))) return prev;
-                    return [...prev, msg];
-                });
-                scrollToBottom();
-            }
+        // Global socket handlers for contact list updates
+        const handleGlobalUpdate = (msg: any) => {
+            fetchContacts(); // Simply refresh list on new message to keep it simple and accurate
         };
-
-        const handleMessageUpdated = (msg: any) => {
-            console.log('📨 SOCKET EVENT: message_updated', msg);
-            setMessages(prev => prev.map(m => {
-                if (m.id === msg.id) {
-                    return { ...m, ...msg };
-                }
-                return m;
-            }));
-        };
-
-        const handleReconnect = () => {
-            console.log('🔄 Socket reconnected, refreshing data...');
-            fetchContacts();
-            if (selectedContactRef.current) {
-                fetchMessages(selectedContactRef.current);
-            }
-        };
-
-        socket.on('new_message', handleNewMessage);
-        socket.on('new_client_message', handleNewMessage);
-        socket.on('new_message_global', handleNewMessage);
-        socket.on('contact_message', (data: any) => {
-            if (data.message) {
-                const msg = { ...data.message, contact_id: data.contact_id || data.message.contact_id };
-                handleNewMessage(msg);
-            }
-        });
-        socket.on('message_updated', handleMessageUpdated);
-        socket.on('connect', handleReconnect);
-
-        // Join rooms logic
-        const joinRooms = () => {
-            if (activeOrder?.main_id) {
-                socket.emit('join_main', activeOrder.main_id);
-            }
-            if (contacts.length > 0) {
-                contacts.forEach(c => {
-                    socket.emit('join_contact', c.id);
-                });
-            }
-        };
-
-        joinRooms();
-
+        socket.on('new_message_global', handleGlobalUpdate);
         return () => {
-            socket.off('new_message', handleNewMessage);
-            socket.off('new_client_message', handleNewMessage);
-            socket.off('new_message_global', handleNewMessage);
-            socket.off('contact_message');
-            socket.off('message_updated', handleMessageUpdated);
-            socket.off('connect', handleReconnect);
+            socket.off('new_message_global', handleGlobalUpdate);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeOrder, socket]); // REMOVED contacts.length to stop loop
+    }, [socket]);
 
     // Handle URL param selection
     useEffect(() => {
@@ -275,38 +166,7 @@ const InboxPage: React.FC = () => {
     };
 
     const fetchMessages = async (contactId: number, loadMore = false) => {
-        try {
-            if (!loadMore) {
-                setIsLoadingMessages(true);
-            } else {
-                setLoadingMore(true);
-            }
-
-            const limit = 50;
-            const offset = loadMore ? messages.length : 0;
-            const data = await contactMessagesAPI.getByContactId(contactId, { limit, offset });
-
-            if (selectedContactRef.current === contactId) {
-                if (loadMore) {
-                    setMessages(prev => [...data.messages, ...prev]);
-                } else {
-                    setMessages(data.messages);
-                    setTotalMessages(data.total);
-                    scrollToBottom();
-                }
-            }
-        } catch (error: any) {
-            console.error('Error fetching messages:', error);
-            if (error.response) {
-                console.error('Server Error Details:', error.response.data);
-                antMessage.error(`Ошибка загрузки: ${JSON.stringify(error.response.data)}`);
-            }
-        } finally {
-            if (selectedContactRef.current === contactId) {
-                setIsLoadingMessages(false);
-                setLoadingMore(false);
-            }
-        }
+        // Handled by useOrderChat hook
     };
 
     const selectContact = async (contact: ExtendedInboxContact) => {
@@ -323,8 +183,6 @@ const InboxPage: React.FC = () => {
 
         // Clear state immediately to avoid showing old data
         setActiveOrder(null);
-        setMessages([]);
-        setTotalMessages(0);
 
         fetchMessages(contact.id);
 
@@ -368,24 +226,9 @@ const InboxPage: React.FC = () => {
 
 
     const handleAddReaction = async (msg: Message, emoji: string) => {
-        // Optimistic update
-        setMessages(prev => prev.map(m => {
-            if (m.id === msg.id) {
-                const currentReactions = m.reactions || [];
-                return {
-                    ...m,
-                    reactions: [...currentReactions, {
-                        emoji,
-                        author: 'Me', // Placeholder
-                        created_at: new Date().toISOString()
-                    }]
-                };
-            }
-            return m;
-        }));
-
         try {
             await messagesAPI.addReaction(msg.id, emoji); // Use shared API method
+            // Real-time update will come via socket through useOrderChat hook
         } catch (error) {
             console.error('Error adding reaction:', error);
             antMessage.error('Не удалось добавить реакцию');
@@ -393,86 +236,21 @@ const InboxPage: React.FC = () => {
     };
 
     const handleSendMessage = async (text: string) => {
-        if (!selectedContact || sending) return;
-        setSending(true);
-        try {
-            // Используем activeOrder.id вместо latest_order_id
-            if (!activeOrder) {
-                antMessage.error('Нет активной заявки для отправки сообщения');
-                return;
-            }
-
-            const newMsg = await orderMessagesAPI.sendClientMessage(activeOrder.id, text);
-            // Оптимистичное обновление
-            setMessages(prev => [...prev, newMsg]);
-
-            // Обновляем последнее сообщение в списке контактов
-            setContacts(prev => prev.map(c =>
-                c.id === selectedContact.id
-                    ? { ...c, last_message: newMsg, last_message_at: newMsg.created_at || newMsg['Created Date'] }
-                    : c
-            ).sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()));
-
-            scrollToBottom();
-        } catch (error) {
-            console.error('Error sending message:', error);
-            antMessage.error('Не удалось отправить сообщение');
-        } finally {
-            setSending(false);
-        }
+        if (!activeOrder?.id) return;
+        await hookSendMessage(text, 'client');
+        scrollToBottom();
     };
 
     const handleSendVoice = async (voice: Blob, duration: number) => {
-        if (!selectedContact || sending) return;
-        setSending(true);
-        try {
-            if (!activeOrder) {
-                antMessage.error('Нет активной заявки для отправки сообщения');
-                return;
-            }
-            const newMsg = await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration);
-            setMessages(prev => [...prev, newMsg]);
-            setContacts(prev => prev.map(c =>
-                c.id === selectedContact.id
-                    ? { ...c, last_message: newMsg, last_message_at: newMsg.created_at || newMsg['Created Date'] }
-                    : c
-            ).sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()));
-            scrollToBottom();
-        } catch (error: any) {
-            const errMsg = error.response?.data?.error || 'Ошибка отправки голосового';
-            antMessage.error(errMsg);
-        } finally {
-            setSending(false);
-        }
+        if (!activeOrder?.id) return;
+        await hookSendMessage('', 'client', undefined, voice, duration);
+        scrollToBottom();
     };
 
     const handleSendFile = async (file: File, caption?: string) => {
-        if (!selectedContact || sending) return;
-        setSending(true);
-        try {
-            if (!activeOrder) {
-                antMessage.error('Нет активной заявки для отправки сообщения');
-                return;
-            }
-            const newMsg = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
-            // Оптимистичное обновление с защитой от дублей (приводим ID к строке)
-            setMessages(prev => {
-                if (prev.some(m => String(m.id) === String(newMsg.id))) return prev;
-                return [...prev, newMsg];
-            });
-
-            setContacts(prev => prev.map(c =>
-                c.id === selectedContact.id
-                    ? { ...c, last_message: newMsg, last_message_at: newMsg.created_at || newMsg['Created Date'] }
-                    : c
-            ).sort((a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()));
-            scrollToBottom();
-        } catch (error: any) {
-            const errMsg = error.response?.data?.error || 'Ошибка отправки файла';
-            antMessage.error(errMsg);
-        } finally {
-            setSending(false);
-        }
+        if (!activeOrder?.id) return;
+        await hookSendMessage(caption || '', 'client', file);
+        scrollToBottom();
     };
 
     const screens = Grid.useBreakpoint();
@@ -764,11 +542,11 @@ const InboxPage: React.FC = () => {
                                     <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
                                 ) : (
                                     <>
-                                        {messages.length < totalMessages && (
+                                        {hasMore && (
                                             <div style={{ textAlign: 'center', marginBottom: 16 }}>
                                                 <Button
                                                     size="small"
-                                                    onClick={() => selectedContact && fetchMessages(selectedContact.id, true)}
+                                                    onClick={() => selectedContact && fetchTimeline(true)}
                                                     loading={loadingMore}
                                                 >
                                                     Загрузить предыдущие
