@@ -173,16 +173,12 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
 
             if (isVoice) {
                 return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 200, padding: '8px 4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120, marginTop: 4 }}>
                         <div
                             onClick={(e) => { e.stopPropagation(); toggleAudio(); }}
                             style={{
                                 cursor: 'pointer',
-                                fontSize: 28,
-                                background: 'rgba(255,255,255,0.2)',
-                                borderRadius: '50%',
-                                width: 40,
-                                height: 40,
+                                fontSize: 24,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center'
@@ -190,20 +186,9 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                         >
                             {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                            <div style={{ height: 4, background: 'rgba(255,255,255,0.3)', borderRadius: 2, width: '100%', marginBottom: 4 }}>
-                                <div style={{
-                                    height: '100%',
-                                    background: 'currentColor',
-                                    width: isPlaying ? '100%' : '0%', // Simplified progress 
-                                    transition: 'width 0.2s',
-                                    animation: isPlaying ? 'progress 10s linear infinite' : 'none'
-                                }} />
-                            </div>
-                            <span style={{ fontSize: 11, opacity: 0.8 }}>
-                                {msg.voice_duration ? formatTime(new Date(0).setSeconds(msg.voice_duration || 0)).substr(3) : '0:00'}
-                            </span>
-                        </div>
+                        <span style={{ fontSize: 12 }}>
+                            {msg.voice_duration ? formatTime(new Date(0).setSeconds(msg.voice_duration || 0)).substr(3) : '0:00'}
+                        </span>
                         <audio ref={audioRef} src={effectiveFileUrl} onEnded={() => setIsPlaying(false)} style={{ display: 'none' }} />
                     </div>
                 );
@@ -292,9 +277,9 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                     trigger={['contextMenu']}
                 >
                     <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
-                        {!isFromClient && !isOwn && (
+                        {!isFromClient && (
                             <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
-                                {msg.sender?.name || msg.user || 'Оператор'}
+                                {msg.sender?.name || msg.user || (isOwn ? 'Вы' : 'Оператор')}
                             </div>
                         )}
 
@@ -329,7 +314,19 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                         {displayButtons && displayButtons.length > 0 && (
                             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {displayButtons.map((btn: any, idx: number) => (
-                                    <AntButton key={idx} size="small" type="primary" ghost block href={btn.url} target="_blank">
+                                    <AntButton
+                                        key={idx}
+                                        size="small"
+                                        block
+                                        href={btn.url}
+                                        target="_blank"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.9)',
+                                            color: '#1890ff',
+                                            borderColor: 'transparent',
+                                            fontWeight: 500
+                                        }}
+                                    >
                                         {btn.text}
                                     </AntButton>
                                 ))}
