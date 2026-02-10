@@ -101,11 +101,10 @@ class OrderMessagesService {
                     } catch (e) { }
                 }
 
-                const escapedText = escapeMarkdownV2(messageText || 'Сообщение');
+                // Send plain text (no MarkdownV2 to avoid escaping issues)
                 const telegramPayload = {
                     chat_id: telegramUserId,
-                    text: escapedText,
-                    parse_mode: 'MarkdownV2',
+                    text: messageText || content || 'Сообщение',
                     reply_markup: replyMarkup
                 };
                 if (replyToMessageId) telegramPayload.reply_to_message_id = replyToMessageId;
