@@ -77,9 +77,17 @@ const SettingsPage: React.FC = () => {
   const handleUpdateProfile = async (values: any) => {
     setLoading(true);
     try {
-      // TODO: API для обновления профиля
-      message.success('Профиль обновлен');
+      if (manager && manager.id) {
+        await managersAPI.update(manager.id, { name: values.name });
+        message.success('Профиль обновлен');
+        // Update local state or re-fetch user if needed, though Context usually handles this upon next load or check
+        // For now message is enough as backend is updated.
+        // Ideally we should update auth context here, but simple reload next time works.
+      } else {
+        message.error('Ошибка идентификации пользователя');
+      }
     } catch (error: any) {
+      console.error('Update profile error:', error);
       message.error(error.response?.data?.error || 'Ошибка обновления профиля');
     } finally {
       setLoading(false);
@@ -165,10 +173,15 @@ const SettingsPage: React.FC = () => {
 
     setLoading(true);
     try {
-      // TODO: API для смены пароля
-      message.success('Пароль изменен');
-      form.resetFields(['oldPassword', 'newPassword', 'confirmPassword']);
+      if (manager && manager.id) {
+        await managersAPI.update(manager.id, { password: values.newPassword });
+        message.success('Пароль изменен');
+        form.resetFields(['oldPassword', 'newPassword', 'confirmPassword']);
+      } else {
+        message.error('Ошибка идентификации пользователя');
+      }
     } catch (error: any) {
+      console.error('Change password error:', error);
       message.error(error.response?.data?.error || 'Ошибка смены пароля');
     } finally {
       setLoading(false);

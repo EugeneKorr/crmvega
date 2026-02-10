@@ -2,32 +2,29 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Spin,
   Empty,
-  message as antMessage,
   Switch,
   Tooltip,
 } from 'antd';
 import {
-  UserOutlined,
   TeamOutlined,
-  LockOutlined,
   GlobalOutlined,
 } from '@ant-design/icons';
 import { Message, Order } from '../types';
-import { orderMessagesAPI, messagesAPI, ordersAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import io from 'socket.io-client';
 import { UnifiedMessageBubble } from './UnifiedMessageBubble';
 import { ChatInput } from './ChatInput';
 import { formatDate, isClientMessage } from '../utils/chatUtils';
+import { useOrderChat } from '../hooks/useOrderChat';
 
 interface OrderChatProps {
   orderId: number;
   mainId?: number | string;
   contactName?: string;
   isMobile?: boolean;
+  order?: Order | null; // Pass order for replacements
 }
 
-// Extended interface for the unified timeline
+// Helper for type casting if needed, though hook provides typed messages
 interface TimelineMessage extends Message {
   source_type?: 'client' | 'internal';
   sort_date?: string;
@@ -35,28 +32,26 @@ interface TimelineMessage extends Message {
   display_author?: string;
 }
 
-const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, contactName, isMobile = false }) => {
+const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isMobile = false, order }) => {
   const { manager } = useAuth();
 
-  // State for merged timeline
-  const [messages, setMessages] = useState<TimelineMessage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  // Use new hook
+  const {
+    messages,
+    loading,
+    loadingMore,
+    hasMore,
+    sending,
+    replyTo,
+    setReplyTo,
+    fetchTimeline,
+    sendMessage,
+    addReaction
+  } = useOrderChat(orderId, mainId ? String(mainId) : undefined, order?.contact_id);
 
   // Input mode: 'client' (default) or 'internal'
   const [inputMode, setInputMode] = useState<'client' | 'internal'>('client');
-
-  const [sending, setSending] = useState(false);
-  const [order, setOrder] = useState<Order | null>(null);
-  const [mainId, setMainId] = useState<string | undefined>(propMainId ? String(propMainId) : undefined);
-  const [contactId, setContactId] = useState<number | undefined>(undefined);
-
-  // Reply state
-  const [replyTo, setReplyTo] = useState<TimelineMessage | null>(null);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -66,22 +61,22 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
     }, 100);
   }, []);
 
-  const fetchOrder = useCallback(async () => {
-    try {
-      const targetId = propMainId || mainId || orderId;
-      const data = await ordersAPI.getById(Number(targetId));
-      setOrder(data);
-      if (data.main_id) setMainId(String(data.main_id));
-      if (data.contact_id) setContactId(data.contact_id);
-    } catch (e) {
-      console.error('Failed to fetch order in chat', e);
-    }
-  }, [orderId, mainId, propMainId]);
-
+  // Initial load
   useEffect(() => {
-    fetchOrder();
-  }, [fetchOrder]);
+    fetchTimeline(false);
+  }, [fetchTimeline]);
 
+  // Scroll on new messages (simple implementation)
+  useEffect(() => {
+    // If we are at the bottom or it's initial load, scroll. 
+    // For now, just scroll on length change if near bottom or validation needed.
+    // But simple approach: scroll on initial load (messages changed from 0 to N)
+    if (!loading && !loadingMore && messages.length > 0 && messages.length <= 50) {
+      scrollToBottom();
+    }
+  }, [messages.length, loading, loadingMore, scrollToBottom]);
+
+  // Replacements logic
   const replacements: Record<string, string> = order ? {
     '[Клиент отдает]': order.SumInput != null ? String(order.SumInput) : '',
     '[Отдает в валюте]': order.CurrPair1 || '',
@@ -92,269 +87,25 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
     '[Клиент получает]': order.SumOutput != null ? String(order.SumOutput) : ''
   } : {};
 
-  // Fetching logic (Timeline)
-  const fetchTimeline = useCallback(async (loadMore = false) => {
-    try {
-      if (!loadMore) setLoading(true);
-      else setLoadingMore(true);
-
-      const limit = 50;
-      // If loading more, find the oldest message date
-      let before: string | undefined = undefined;
-
-      if (loadMore && messages.length > 0) {
-        // Find oldest sort_date
-        const oldest = messages[messages.length - 1];
-        before = oldest.sort_date || oldest.created_at || oldest['Created Date'];
-      }
-
-      const response = await orderMessagesAPI.getTimeline(orderId, { limit, before });
-
-      // Cast response to TimelineMessage
-      const fetched = response.messages as TimelineMessage[];
-
-      if (loadMore) {
-        setMessages(prev => {
-          // Avoid duplicates just in case
-          const existingIds = new Set(prev.map(m => m.id + '_' + (m.source_type || 'c')));
-          const newMsgs = fetched.filter(m => !existingIds.has(m.id + '_' + (m.source_type || 'c')));
-          return [...prev, ...newMsgs];
-        });
-      } else {
-        setMessages(fetched);
-        // On initial load, mark internal read
-        orderMessagesAPI.markAsRead(orderId);
-      }
-
-      setHasMore(response.meta.has_more);
-
-    } catch (error) {
-      console.error('Error fetching timeline:', error);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, messages.length]); // depend on length for pagination cursor
-
-  // Initial load
-  useEffect(() => {
-    fetchTimeline(false);
-    // Mark client messages as read when chat opens
-    orderMessagesAPI.markClientMessagesAsRead(orderId).catch(err =>
-      console.error('Failed to mark client messages read on chat open:', err)
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId]);
-
-  // Scroll to bottom on initial load
-  useEffect(() => {
-    if (!loading && !loadingMore && messages.length > 0) {
-      // Only scroll if we are not manually scrolling up (e.g. init)
-      // For simple UX, let's scroll bottom on first load.
-      if (messages.length <= 50) scrollToBottom();
-    }
-  }, [loading, scrollToBottom, messages.length, loadingMore]);
-
-
-  // Socket
-  useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
-    socketRef.current = io(socketUrl, {
-      transports: ['websocket', 'polling'],
-    });
-
-    socketRef.current.on('connect', () => {
-      socketRef.current?.emit('join_order', orderId.toString());
-      if (mainId) socketRef.current?.emit('join_main', mainId);
-      if (contactId) socketRef.current?.emit('join_contact', contactId.toString());
-    });
-
-    if (socketRef.current.connected) {
-      if (mainId) socketRef.current.emit('join_main', mainId);
-      if (contactId) socketRef.current.emit('join_contact', contactId.toString());
-    }
-
-    const handleNewMessage = (msg: TimelineMessage) => {
-      // Determine if duplicate
-      setMessages(prev => {
-        if (prev.some(m => m.id === msg.id && m.source_type === msg.source_type)) return prev;
-        // Prepend or Append?
-        // Our list is ordered DESC (Newest first) ? 
-        // Wait, usually chat UI is Newest at Bottom.
-        // Backend returns DESC (Newest first).
-        // Frontend usually renders ASC (Oldest first).
-        // Let's check render logic.
-        // If I render via `messages.slice().reverse().map...` then items are top to bottom.
-        // Let's assume `messages` state is DESC (Newest at index 0).
-        return [msg, ...prev];
-      });
-      scrollToBottom();
-    };
-
-    socketRef.current.on('new_client_message', (msg: any) => {
-      // Validate if message belongs to this order context (by main_id or contact_id)
-      const matchesMainId = mainId && msg.main_id && String(msg.main_id) === String(mainId);
-      const matchesContactId = contactId && msg.contact_id && Number(msg.contact_id) === Number(contactId);
-
-      if (matchesMainId || matchesContactId) {
-        handleNewMessage({ ...msg, source_type: 'client', sort_date: msg['Created Date'] || msg.created_at, display_author: 'Клиент' });
-      }
-    });
-
-    socketRef.current.on('new_internal_message', (msg: any) => {
-      // Internal messages have explicit order_id
-      if (msg.order_id && Number(msg.order_id) === Number(orderId)) {
-        handleNewMessage({
-          ...msg,
-          source_type: 'internal',
-          sort_date: msg.created_at,
-          is_system: msg.attachment_type === 'system',
-          display_author: msg.sender?.name || 'Система',
-          author_type: msg.sender?.name || 'Manager' // Ensure avatar works
-        });
-      }
-    });
-
-    // Bubble sync
-    socketRef.current.on('new_message_bubble', (msg: Message) => {
-      const matchesMainId = mainId && msg.main_id && String(msg.main_id) === String(mainId);
-      if (matchesMainId) {
-        handleNewMessage({ ...msg, source_type: 'client', sort_date: msg['Created Date'], display_author: 'Клиент' });
-      }
-    });
-
-    socketRef.current.on('message_updated', (updatedMsg: Message) => {
-      setMessages(prev => prev.map(m => {
-        if (Number(m.id) === Number(updatedMsg.id)) {
-          // Preserve local props. Protect content.
-          // If updatedMsg key is missing or null, keep old one?
-          // Usually updates are full replacements.
-          // But if reaction update somehow stripped content, we want to be safe.
-          const newContent = updatedMsg.content !== undefined ? updatedMsg.content : m.content;
-
-          return {
-            ...m,
-            ...updatedMsg,
-            content: newContent,
-            reactions: updatedMsg.reactions
-          };
-        }
-        return m;
-      }));
-    });
-
-    return () => {
-      socketRef.current?.emit('leave_order', orderId.toString());
-      socketRef.current?.disconnect();
-    };
-  }, [orderId, manager?.id, mainId, contactId, scrollToBottom]);
-
-
-  // Actions
+  // Handlers
   const handleSendText = async (text: string) => {
-    if (sending) return;
-    setSending(true);
-    try {
-      if (inputMode === 'client') {
-        const replyId = replyTo && 'message_id_tg' in replyTo ? replyTo.message_id_tg as number : undefined;
-        await orderMessagesAPI.sendClientMessage(orderId, text, replyId);
-      } else {
-        const replyId = replyTo ? replyTo.id : undefined;
-        await orderMessagesAPI.sendInternalMessage(orderId, text, replyId);
-      }
-      setReplyTo(null);
-      scrollToBottom();
-    } catch (error) {
-      console.error('Error sending message:', error);
-      antMessage.error('Ошибка отправки');
-    } finally {
-      setSending(false);
-    }
+    const success = await sendMessage(text, inputMode);
+    if (success) scrollToBottom();
   };
 
   const handleSendVoice = async (voice: Blob, duration: number) => {
-    if (sending) return;
-    setSending(true);
-    try {
-      // Voice always to desired channel
-      if (inputMode === 'client') {
-        await orderMessagesAPI.sendClientVoice(orderId, voice, duration);
-      } else {
-        await orderMessagesAPI.sendInternalVoice(orderId, voice, duration);
-      }
-      scrollToBottom();
-    } catch (error) {
-      console.error('Error sending voice:', error);
-      antMessage.error('Ошибка отправки голосового');
-    } finally {
-      setSending(false);
-    }
+    const success = await sendMessage('', inputMode, undefined, voice, duration);
+    if (success) scrollToBottom();
   };
 
   const handleSendFile = async (file: File, caption?: string) => {
-    if (sending) return;
-    setSending(true);
-    try {
-      if (inputMode === 'client') {
-        const replyId = replyTo && 'message_id_tg' in replyTo ? replyTo.message_id_tg as number : undefined;
-        await orderMessagesAPI.sendClientFile(orderId, file, caption, replyId);
-      } else {
-        const replyId = replyTo ? replyTo.id : undefined;
-        await orderMessagesAPI.sendInternalFile(orderId, file, replyId);
-        if (caption) {
-          await orderMessagesAPI.sendInternalMessage(orderId, caption, replyId);
-        }
-      }
-      setReplyTo(null);
-      scrollToBottom();
-    } catch (error) {
-      console.error('Error sending file:', error);
-      antMessage.error('Ошибка отправки файла');
-    } finally {
-      setSending(false);
-    }
+    const success = await sendMessage(caption || '', inputMode, file);
+    if (success) scrollToBottom();
   };
 
-  const handleAddReaction = async (msg: Message, emoji: string) => {
-    // Optimistic update
-    setMessages(prev => prev.map(m => {
-      if (m.id === msg.id) {
-        const currentReactions = m.reactions || [];
-        // Remove my existing reaction
-        const otherReactions = currentReactions.filter(r => r.author_id !== manager?.id);
-        const myExistingReaction = currentReactions.find(r => r.author_id === manager?.id);
-
-        let newReactions = [...otherReactions];
-
-        // If I clicked a DIFFERENT emoji, add it. If SAME, leave it removed (toggle off).
-        if (myExistingReaction?.emoji !== emoji) {
-          newReactions.push({
-            emoji,
-            author: manager?.name || 'Me',
-            author_id: manager?.id,
-            created_at: new Date().toISOString()
-          });
-        }
-
-        return { ...m, reactions: newReactions };
-      }
-      return m;
-    }));
-
-    try {
-      await messagesAPI.addReaction(msg.id, emoji);
-    } catch (error) {
-      console.error('Error adding reaction:', error);
-      // Rollback could be added here if needed, but rarely necessary for reactions
-      antMessage.error('Не удалось отправить реакцию');
-    }
-  };
-
-  // --- Rendering ---
-
+  // Rendering
   const renderList = () => {
-    // Messages are DESC (Newest first). We need to reverse for display (Oldest at top).
+    // Messages are DESC (Newest first) from hook. We reverse for display (Oldest top).
     const displayList = [...messages].reverse();
 
     const groupedMessages: { date: string, msgs: TimelineMessage[] }[] = [];
@@ -363,9 +114,9 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
       const dateKey = formatDate(d);
       const lastGroup = groupedMessages[groupedMessages.length - 1];
       if (lastGroup && lastGroup.date === dateKey) {
-        lastGroup.msgs.push(msg);
+        lastGroup.msgs.push(msg as TimelineMessage);
       } else {
-        groupedMessages.push({ date: dateKey, msgs: [msg] });
+        groupedMessages.push({ date: dateKey, msgs: [msg as TimelineMessage] });
       }
     });
 
@@ -396,7 +147,6 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
               <span style={{ background: '#f5f5f5', padding: '4px 12px', borderRadius: 12 }}>{group.date}</span>
             </div>
             {group.msgs.map(msg => {
-              // System Message Render - визуально отличается от обычных сообщений
               if (msg.is_system) {
                 return (
                   <div key={`${msg.source_type}_${msg.id}`} style={{
@@ -419,38 +169,35 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
                 );
               }
 
-              // Regular message rendering
               let variant: 'client' | 'internal' = 'client';
-
-              // Internal messages (not system) get special color
               if (msg.source_type === 'internal') {
                 variant = 'internal';
               }
 
-              // Client = Left
-              // Manager (to Client) = Right
-              // Internal = Right (Own) or Left (Other Manager)
-
               let isOwn = false;
               if (msg.source_type === 'client') {
-                isOwn = !isClientMessage(msg.author_type); // Manager is Own
+                // For client messages: 
+                // If author_type is 'client' -> NOT OWN (Left)
+                // If author_type is 'manager' or Manager Name -> OWN (Right)
+                // Checking !isClientMessage is safer if we trust chatUtils
+                isOwn = !isClientMessage(msg.author_type);
               } else {
                 // Internal
                 isOwn = msg.sender?.id === manager?.id;
                 if (!msg.sender?.id && msg.manager_id === manager?.id) isOwn = true;
               }
 
-              // Alignment logic
               let alignment: 'left' | 'right' | undefined = undefined;
               if (msg.source_type === 'internal') {
                 alignment = isOwn ? 'right' : 'left';
               }
 
-              // Determine Reply Context (we need to find the message in our list)
+              // Resolve Reply Context
+              // We search in the *full* messages list (descending)
               let replyCtx: Message | undefined = undefined;
-              if (msg.reply_to_mess_id_tg && messages.find) { // client reply TG
+              if (msg.reply_to_mess_id_tg) {
                 replyCtx = messages.find(m => m.message_id_tg === msg.reply_to_mess_id_tg);
-              } else if ((msg as any).reply_to_id) { // internal reply
+              } else if ((msg as any).reply_to_id) {
                 replyCtx = messages.find(m => m.id === (msg as any).reply_to_id && m.source_type === 'internal');
               }
 
@@ -460,7 +207,7 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
                   msg={msg}
                   isOwn={isOwn}
                   onReply={(m) => setReplyTo(m as TimelineMessage)}
-                  onAddReaction={handleAddReaction}
+                  onAddReaction={(m, e) => addReaction(m.id, e)}
                   replyMessage={replyCtx}
                   variant={variant}
                   alignment={alignment}
@@ -472,7 +219,6 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId: propMainId, cont
       </>
     );
   };
-
 
   return (
     <div style={{

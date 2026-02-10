@@ -1,5 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Assuming backend/.env
+
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('Missing Supabase credentials in .env');
+    process.exit(1);
+}
 
 const supabase = createClient(
     process.env.SUPABASE_URL,

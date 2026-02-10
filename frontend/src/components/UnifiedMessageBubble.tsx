@@ -208,6 +208,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
         } catch (error) {
             console.error('Download failed', error);
             // Fallback
+            antMessage.loading({ content: 'Opening file...', key: 'downloading', duration: 1 });
             window.open(url, '_blank');
         }
     };

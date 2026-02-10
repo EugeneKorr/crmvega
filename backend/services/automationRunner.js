@@ -234,15 +234,9 @@ async function executeAction(actionType, actionConfig, entity, options = {}) {
       }
       break;
 
-    case 'send_email':
-      // Отправить email (пока только логируем)
-      console.log('Email action:', {
-        to: actionConfig.email || entity.email,
-        subject: actionConfig.subject || 'Уведомление',
-        message: actionConfig.message || 'Сообщение',
-      });
-      // TODO: Интегрировать с email сервисом
-      break;
+    // case 'send_email':
+    //   // Email notification feature disabled for now
+    //   break;
 
     default:
       console.warn(`Unknown action type: ${actionType}`);

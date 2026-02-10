@@ -1,10 +1,11 @@
-require('dotenv').config({ path: './frontend/.env' }); // Try frontend .env first, then backend
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../frontend/.env') }); // Try frontend .env first
 if (!process.env.TELEGRAM_BOT_TOKEN) {
-    require('dotenv').config({ path: './backend/.env' });
+    require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Try backend .env
 }
 if (!process.env.TELEGRAM_BOT_TOKEN) {
-    // Try to find ANY .env
-    require('dotenv').config();
+    // Try to find ANY .env in root
+    require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 }
 
 const axios = require('axios');

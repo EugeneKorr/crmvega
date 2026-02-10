@@ -33,29 +33,25 @@ import {
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Order, Note, ORDER_STATUSES, NOTE_PRIORITIES } from '../types';
-import { ordersAPI, notesAPI, orderMessagesAPI } from '../services/api';
+import { notesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { useSocket } from '../contexts/SocketContext';
+import { useOrder } from '../hooks/useOrder';
 import OrderChat from '../components/OrderChat';
 import { OrderTags } from '../components/OrderTags';
-
-
-
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
-
-type Socket = ReturnType<typeof io>;
 
 const OrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { manager } = useAuth();
-  const [order, setOrder] = useState<Order | null>(null);
+  // Notes state remains local for now
   const [notes, setNotes] = useState<Note[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loading, setLoading] = useState(false);
-  const [notFound, setNotFound] = useState(false);
+
+  // USE ORDER HOOK
+  const { order, loading, updateOrder, updateStatus, refreshOrder } = useOrder(id);
+
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isNoteModalVisible, setIsNoteModalVisible] = useState(false);
   const [isTagsModalVisible, setIsTagsModalVisible] = useState(false);
@@ -64,7 +60,6 @@ const OrderDetailPage: React.FC = () => {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
   const [activeInfoTab, setActiveInfoTab] = useState<'info' | 'notes' | 'chat'>('chat');
-  const { socket } = useSocket(); // Use global socket
 
   // Reset tab to info if switching to desktop while in chat tab
   useEffect(() => {
@@ -75,63 +70,15 @@ const OrderDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      fetchOrder();
       fetchNotes();
-      // Socket setup is now in separate effect
+      // Order fetch is handled by hook
     }
   }, [id]);
 
-  // Socket subscription logic
+  // Update form when order loads
   useEffect(() => {
-    if (!socket || !id) return;
-
-    // Join the order room
-    socket.emit('join_order', id);
-
-    const handleOrderUpdated = (updatedOrder: Order) => {
-      const currentIdStr = String(id || '0');
-      if (String(updatedOrder.id) === currentIdStr || String(updatedOrder.main_id) === currentIdStr) {
-        setOrder(updatedOrder);
-      }
-    };
-
-    socket.on('order_updated', handleOrderUpdated);
-
-    return () => {
-      socket.off('order_updated', handleOrderUpdated);
-    };
-  }, [socket, id]);
-
-  const fetchOrder = async () => {
-    if (!id) return;
-    try {
-      setLoading(true);
-      setNotFound(false);
-      // id from URL is assumed to be correct ID (Main ID preferred)
-      const orderData = await ordersAPI.getById(parseInt(id));
-      setOrder(orderData);
-      form.setFieldsValue(orderData);
-
-      // Mark client messages as read
-      if (orderData.unread_count && orderData.unread_count > 0) {
-        try {
-          // Use URL id as it matches what we loaded
-          await orderMessagesAPI.markClientMessagesAsRead(parseInt(id));
-        } catch (error) {
-          console.error('Error marking messages as read:', error);
-        }
-      }
-    } catch (error: any) {
-      console.error('Error fetching order:', error);
-      if (error.response?.status === 404) {
-        setNotFound(true);
-      } else {
-        message.error('Ошибка загрузки заявки');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (order) form.setFieldsValue(order);
+  }, [order, form]);
 
   const fetchNotes = async () => {
     if (!id) return;
@@ -144,15 +91,11 @@ const OrderDetailPage: React.FC = () => {
   };
 
   const handleUpdateOrder = async (values: any) => {
-    if (!id) return;
     try {
-      // Use URL id as it matches what we loaded (usually Main ID)
-      await ordersAPI.update(parseInt(id), values);
-      message.success('Заявка обновлена');
+      await updateOrder(values);
       setIsEditModalVisible(false);
-      fetchOrder();
-    } catch (error: any) {
-      message.error(error.response?.data?.error || 'Ошибка обновления заявки');
+    } catch (error) {
+      // Error handled in hook (toast)
     }
   };
 
@@ -160,7 +103,7 @@ const OrderDetailPage: React.FC = () => {
     if (!id || !manager || !order) return;
     try {
       await notesAPI.create({
-        order_id: order.id, // Notes still use internal ID (FK)
+        order_id: order.id, // Notes use internal ID
         manager_id: manager.id,
         content: values.content,
         priority: values.priority || 'info',
@@ -175,19 +118,10 @@ const OrderDetailPage: React.FC = () => {
   };
 
   const handleStatusChange = async (newStatus: any) => {
-    if (!order) return;
-    const oldStatus = order.status;
-    const updatedOrder = { ...order, status: newStatus };
-    setOrder(updatedOrder); // Optimistic update
-
     try {
-      // Use Main ID for API call to match strict backend policy
-      const targetId = order.main_id || order.id;
-      await ordersAPI.update(targetId, { status: newStatus });
-      message.success('Статус обновлен');
+      await updateStatus(newStatus);
     } catch (error: any) {
-      setOrder({ ...order, status: oldStatus }); // Rollback
-      message.error(error.response?.data?.error || 'Ошибка обновления статуса');
+      // Error handled in hook or here
     }
   };
 
@@ -200,7 +134,7 @@ const OrderDetailPage: React.FC = () => {
       color: value.color,
     }));
 
-  if (notFound) {
+  if (!order && !loading) {
     return (
       <div style={{
         display: 'flex',
@@ -236,7 +170,7 @@ const OrderDetailPage: React.FC = () => {
     );
   }
 
-  if (!order) {
+  if (loading) {
     return (
       <div style={{
         display: 'flex',
@@ -256,6 +190,8 @@ const OrderDetailPage: React.FC = () => {
       </div>
     );
   }
+
+  if (!order) return null; // Should be covered by Not Found check, but satisfies TS
 
   const clean = (val: any) => {
     if (val === null || val === undefined) return null;
@@ -522,7 +458,7 @@ const OrderDetailPage: React.FC = () => {
                   <OrderTags
                     orderId={order.id}
                     initialTags={order.tags}
-                    onTagsChange={(newTags) => setOrder(prev => prev ? { ...prev, tags: newTags } : null)}
+                    onTagsChange={(newTags) => refreshOrder()}
                   />
                 </div>
                 <Space style={{ marginTop: 4, flexWrap: 'wrap' }}>
@@ -676,6 +612,7 @@ const OrderDetailPage: React.FC = () => {
                           mainId={order.main_id}
                           contactName={order.contact?.name}
                           isMobile={true}
+                          order={order}
                         />
                       ) : (
                         <Empty description="Нет чата" />
@@ -803,6 +740,7 @@ const OrderDetailPage: React.FC = () => {
                 orderId={order.id}
                 mainId={order.main_id}
                 contactName={order.contact?.name}
+                order={order}
               />
             ) : (
               <Card style={{
@@ -926,7 +864,7 @@ const OrderDetailPage: React.FC = () => {
           orderId={order.id}
           initialTags={order.tags}
           onTagsChange={(newTags) => {
-            setOrder(prev => prev ? { ...prev, tags: newTags } : null);
+            refreshOrder();
             // Keep modal open for multiple selection
           }}
         />

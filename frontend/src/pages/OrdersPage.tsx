@@ -37,6 +37,7 @@ import { Order, ORDER_STATUSES, Contact, OrderStatus, Tag as TagData, Manager } 
 import { ordersAPI, contactsAPI, tagsAPI, managersAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
+import { useOrders } from '../hooks/useOrders';
 import KanbanOrderCard from '../components/KanbanOrderCard';
 import MobileOrderList from '../components/MobileOrderList';
 import OrderFilters from '../components/OrderFilters';
@@ -227,13 +228,65 @@ const OrdersPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { manager } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  // const { socket } = useSocket(); // Handled in useOrders
+
+  // Filters state (lifted up for useOrders)
+  const [filters, setFilters] = useState<any>(() => {
+    try {
+      const savedFilters = localStorage.getItem('crm_order_filters');
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters);
+        // Convert dates to string (API format) if needed, though they are stored as strings usually in LS or strings in JSON
+        // We just parse and return. API expects strings for dates.
+        return parsed;
+      }
+    } catch (e) { console.error(e); }
+    return {};
+  });
+
+  const [isFiltersDrawerVisible, setIsFiltersDrawerVisible] = useState(false);
+
+  // --- Column Visibility Optimization ---
+  const DEFAULT_VISIBLE_STATUSES = Object.keys(ORDER_STATUSES).filter(
+    key => !['completed', 'duplicate'].includes(key)
+  ) as OrderStatus[];
+
+  const [visibleStatuses, setVisibleStatuses] = useState<OrderStatus[]>(() => {
+    try {
+      const saved = localStorage.getItem('crm_visible_statuses');
+      return saved ? JSON.parse(saved) : DEFAULT_VISIBLE_STATUSES;
+    } catch {
+      return DEFAULT_VISIBLE_STATUSES;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('crm_visible_statuses', JSON.stringify(visibleStatuses));
+  }, [visibleStatuses]);
+  // --------------------------------------
+
+  // Combine filters with URL params (like tags)
+  const activeFilters = useMemo(() => {
+    const tagId = searchParams.get('tag');
+    return {
+      ...filters,
+      tag_id: tagId ? parseInt(tagId) : undefined
+    };
+  }, [filters, searchParams]);
+
+  // USE ORDERS HOOK
+  const { orders, setOrders, loading, fetchOrders: refreshOrders } = useOrders({
+    filters: activeFilters,
+    visibleStatuses
+  });
+
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [allTags, setAllTags] = useState<TagData[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false); // Handled by hook
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
@@ -243,51 +296,21 @@ const OrdersPage: React.FC = () => {
   const [modal, contextHolder] = Modal.useModal();
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
-  // Filters state
-  const [filters, setFilters] = useState<any>({});
-  const [isFiltersDrawerVisible, setIsFiltersDrawerVisible] = useState(false);
-
-  // Load saved filters from localStorage on mount
+  // Save filters to localStorage whenever they change
   useEffect(() => {
     try {
-      const savedFilters = localStorage.getItem('crm_order_filters');
-      if (savedFilters) {
-        const parsed = JSON.parse(savedFilters);
-
-        // Convert to API format
-        const apiFilters: any = {};
-
-        if (parsed.dateRange && parsed.dateRange[0] && parsed.dateRange[1]) {
-          apiFilters.dateFrom = new Date(parsed.dateRange[0]).toISOString();
-          apiFilters.dateTo = new Date(parsed.dateRange[1]).toISOString();
-        }
-
-        if (parsed.amountMin !== undefined) apiFilters.amountMin = parsed.amountMin;
-        if (parsed.amountMax !== undefined) apiFilters.amountMax = parsed.amountMax;
-        if (parsed.currency) apiFilters.currency = parsed.currency;
-        if (parsed.amountOutputMin !== undefined) apiFilters.amountOutputMin = parsed.amountOutputMin;
-        if (parsed.amountOutputMax !== undefined) apiFilters.amountOutputMax = parsed.amountOutputMax;
-        if (parsed.currencyOutput) apiFilters.currencyOutput = parsed.currencyOutput;
-        if (parsed.location) apiFilters.location = parsed.location;
-        if (parsed.sources?.length > 0) apiFilters.sources = parsed.sources;
-        if (parsed.closedBy) apiFilters.closedBy = parsed.closedBy;
-        if (parsed.statuses?.length > 0) apiFilters.statuses = parsed.statuses;
-        if (parsed.tags?.length > 0) apiFilters.tags = parsed.tags;
-
-        setFilters(apiFilters);
+      if (Object.keys(filters).length > 0) {
+        localStorage.setItem('crm_order_filters', JSON.stringify(filters));
+      } else {
+        localStorage.removeItem('crm_order_filters');
       }
     } catch (e) {
-      console.error('Error loading saved filters:', e);
+      console.error('Error saving filters:', e);
     }
-  }, []);
+  }, [filters]);
 
   const handleClearFilters = () => {
     setFilters({});
-    try {
-      localStorage.removeItem('crm_order_filters');
-    } catch (e) {
-      console.error('Error clearing filters:', e);
-    }
   };
 
   // Edit Contact state
@@ -313,7 +336,7 @@ const OrdersPage: React.FC = () => {
       message.success(`Обновлено сделок: ${updatedCount}`);
       setIsBulkStatusModalVisible(false);
       setSelectedRowKeys([]); // Clear selection
-      fetchOrders(); // Refresh data
+      refreshOrders(); // Refresh data
     } catch (error: any) {
       console.error('Bulk update error:', error);
       message.error(error.response?.data?.error || 'Ошибка массового обновления');
@@ -336,7 +359,7 @@ const OrdersPage: React.FC = () => {
 
           message.success(`Удалено сделок: ${count}`);
           setSelectedRowKeys([]); // Clear selection
-          fetchOrders(); // Refresh data
+          refreshOrders(); // Refresh data
         } catch (error: any) {
           console.error('Bulk delete error:', error);
           message.error(error.response?.data?.error || 'Ошибка удаления');
@@ -354,29 +377,10 @@ const OrdersPage: React.FC = () => {
 
   const [activeMobileColumn, setActiveMobileColumn] = useState<OrderStatus>('unsorted');
   // const socketRef = useRef<Socket | null>(null); // Removed local ref
-  const { socket } = useSocket(); // Use global socket
+  // const { socket } = useSocket(); // Handled by hook
   const kanbanRef = useRef<HTMLDivElement>(null);
   // Refs for each column to scroll to them accurately
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // --- Column Visibility Optimization ---
-  const DEFAULT_VISIBLE_STATUSES = Object.keys(ORDER_STATUSES).filter(
-    key => !['completed', 'duplicate'].includes(key)
-  ) as OrderStatus[];
-
-  const [visibleStatuses, setVisibleStatuses] = useState<OrderStatus[]>(() => {
-    try {
-      const saved = localStorage.getItem('crm_visible_statuses');
-      return saved ? JSON.parse(saved) : DEFAULT_VISIBLE_STATUSES;
-    } catch {
-      return DEFAULT_VISIBLE_STATUSES;
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('crm_visible_statuses', JSON.stringify(visibleStatuses));
-  }, [visibleStatuses]);
-  // --------------------------------------
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -398,13 +402,13 @@ const OrdersPage: React.FC = () => {
   }, [searchParams, form]);
 
   useEffect(() => {
-    fetchOrders();
+    // refreshOrders(); // Hook handles initial fetch
     fetchContacts();
     fetchTags();
     fetchManagers();
-    // Socket setup moved to separate effect
+    // Socket setup moved to separate effect (in hook)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, filters, visibleStatuses]); // Add visibleStatuses to dependency
+  }, []); // Only on mount
 
   // Debounce search input
   useEffect(() => {
@@ -450,130 +454,6 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleNewOrder = (newOrder: Order) => {
-      // Only add if status is visible
-      if (!visibleStatuses.includes(newOrder.status)) return;
-
-      setOrders(prev => {
-        if (prev.some(d => d.id === newOrder.id)) return prev;
-        return [newOrder, ...prev];
-      });
-    };
-
-    const handleOrderUpdated = (updatedOrder: Order) => {
-      // Check if status changed to something invisible
-      if (!visibleStatuses.includes(updatedOrder.status)) {
-        setOrders(prev => prev.filter(o => o.id !== updatedOrder.id));
-        return;
-      }
-      setOrders(prev => prev.map(d => d.id === updatedOrder.id ? { ...updatedOrder, contact: d.contact } : d));
-    };
-
-    const handleOrderDeleted = ({ id }: { id: number }) => {
-      setOrders(prev => prev.filter(o => o.id !== id));
-      // Also update cache if possible
-      try {
-        const cached = localStorage.getItem('crm_orders_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed.data) {
-            parsed.data = parsed.data.filter((o: Order) => o.id !== id);
-            localStorage.setItem('crm_orders_cache', JSON.stringify(parsed));
-          }
-        }
-      } catch (e) {
-        console.error('Error updating cache on delete:', e);
-      }
-    };
-
-    socket.on('new_order', handleNewOrder);
-    socket.on('order_updated', handleOrderUpdated);
-    socket.on('order_deleted', handleOrderDeleted);
-
-    return () => {
-      socket.off('new_order', handleNewOrder);
-      socket.off('order_updated', handleOrderUpdated);
-      socket.off('order_deleted', handleOrderDeleted);
-    };
-  }, [socket, visibleStatuses]);
-
-  const fetchOrders = async () => {
-    // Only cache if default filters
-    const isDefaultFilters = Object.keys(filters).length === 0;
-    const CACHE_KEY = 'crm_orders_cache';
-    const CACHE_TTL = 60 * 1000; // 60 seconds
-
-    if (isDefaultFilters) {
-      // Try to load from cache first
-      try {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const { data, timestamp, statuses } = JSON.parse(cached);
-          const age = Date.now() - timestamp;
-
-          // Check if cached statuses match current visible statuses
-          const cachedStatusesStr = JSON.stringify(statuses?.sort());
-          const currentStatusesStr = JSON.stringify(visibleStatuses.slice().sort());
-
-          if (age < CACHE_TTL && cachedStatusesStr === currentStatusesStr) {
-            // Cache is fresh - use it immediately
-            setOrders(data);
-            console.log('✅ Loaded from cache (age:', Math.round(age / 1000), 'sec)');
-            // Still fetch in background to update cache
-            fetchInBackground();
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('Cache read failed:', e);
-      }
-    }
-
-    // No cache or expired - fetch normally
-    await fetchInBackground();
-  };
-
-  const fetchInBackground = async () => {
-    setLoading(true);
-    try {
-      const tagId = searchParams.get('tag');
-
-      // Determine effective statuses to fetch
-      // If filters.statuses is set, use it. Otherwise use visibleStatuses.
-      const statusesToFetch = filters.statuses?.length > 0 ? filters.statuses : visibleStatuses;
-
-      const { orders: fetchedOrders } = await ordersAPI.getAll({
-        minimal: true,
-        // @ts-ignore
-        tag_id: tagId ? parseInt(tagId) : undefined,
-        ...filters, // Apply active filters
-        statuses: statusesToFetch, // OPTIMIZATION: Only fetch what we see
-      });
-
-      setOrders(fetchedOrders);
-
-      // Save to cache only if standard view
-      if (Object.keys(filters).length === 0) {
-        try {
-          localStorage.setItem('crm_orders_cache', JSON.stringify({
-            data: fetchedOrders,
-            timestamp: Date.now(),
-            statuses: visibleStatuses
-          }));
-        } catch (e) {
-          console.warn('Cache write failed:', e);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      message.error('Ошибка загрузки заявок');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Фильтрация по поиску
   const filteredOrders = useMemo(() => {
@@ -675,7 +555,7 @@ const OrdersPage: React.FC = () => {
       message.success('Заявка создана');
       setIsCreateModalVisible(false);
       form.resetFields();
-      fetchOrders();
+      refreshOrders();
     } catch (error: any) {
       message.error(error.response?.data?.error || 'Ошибка создания заявки');
     }
@@ -697,7 +577,7 @@ const OrdersPage: React.FC = () => {
         try {
           const result = await ordersAPI.clearUnsorted();
           message.success(`Удалено заявок: ${result.count}`);
-          fetchOrders();
+          refreshOrders();
         } catch (error: any) {
           console.error('Error clearing unsorted:', error);
           message.error(error.response?.data?.error || 'Ошибка очистки');
@@ -1072,7 +952,7 @@ const OrdersPage: React.FC = () => {
 
           <Button
             icon={<ReloadOutlined />}
-            onClick={fetchOrders}
+            onClick={() => refreshOrders()}
             style={{ borderRadius: 8 }}
           >
             Обновить
