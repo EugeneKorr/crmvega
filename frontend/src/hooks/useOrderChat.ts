@@ -36,6 +36,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     }, [messages]);
 
     const fetchTimeline = useCallback(async (loadMore = false) => {
+        if (!orderId) return;
         try {
             if (!loadMore) setLoading(true);
             else setLoadingMore(true);
@@ -43,19 +44,20 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             const limit = 50;
             let before: string | undefined = undefined;
 
+            // For loadMore, get the oldest message's date (first element, since array is ascending)
             if (loadMore && messagesRef.current.length > 0) {
-                const oldest = messagesRef.current[messagesRef.current.length - 1];
+                const oldest = messagesRef.current[0];
                 before = oldest.sort_date || oldest.created_at || oldest['Created Date'];
             }
 
             const response = await orderMessagesAPI.getTimeline(orderId, { limit, before });
-            const fetched = response.messages as TimelineMessage[];
+            const fetched = (response.messages as TimelineMessage[]).reverse(); // API returns desc, we need asc
 
             if (loadMore) {
                 setMessages(prev => {
                     const existingIds = new Set(prev.map(m => m.id + '_' + (m.source_type || 'c')));
                     const newMsgs = fetched.filter(m => !existingIds.has(m.id + '_' + (m.source_type || 'c')));
-                    return [...prev, ...newMsgs];
+                    return [...newMsgs, ...prev]; // Older messages go BEFORE current ones
                 });
             } else {
                 setMessages(fetched);
@@ -70,14 +72,15 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         }
     }, [orderId]);
 
-    // Mark as read ONLY once when orderId changes, not on every fetch
+    // Auto-fetch messages and mark as read when orderId changes
     useEffect(() => {
         if (!orderId) return;
+        fetchTimeline();
         try {
             orderMessagesAPI.markAsRead(orderId);
             orderMessagesAPI.markClientMessagesAsRead(orderId);
         } catch (e) { }
-    }, [orderId]);
+    }, [orderId, fetchTimeline]);
 
     // Actions
     const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number) => {
@@ -104,7 +107,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         };
 
         // 2. Add to UI immediately
-        setMessages(prev => [optimisticMsg, ...prev]);
+        setMessages(prev => [...prev, optimisticMsg]); // Append at end (ascending order)
         setReplyTo(null);
 
         try {
@@ -173,12 +176,12 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
 
         const handleNewMessage = (msg: TimelineMessage) => {
             setMessages(prev => {
-                // Deduplication: check if message ID already exists or content matches a pending message
+                // Deduplication: check if message ID already exists
                 if (prev.some(m => m.id === msg.id && m.source_type === msg.source_type)) return prev;
 
                 // If it's our own message coming back, remove the pending one
                 const filtered = prev.filter(m => !(m.isPending && m.content === msg.content && m.source_type === msg.source_type));
-                return [msg, ...filtered]; // Newest first
+                return [...filtered, msg]; // Append at end (ascending order)
             });
         };
 
