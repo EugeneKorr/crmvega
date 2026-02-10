@@ -27,6 +27,7 @@ import { UnifiedMessageBubble } from '../components/UnifiedMessageBubble';
 import { ChatInput } from '../components/ChatInput';
 import { formatDate, formatTime, isClientMessage } from '../utils/chatUtils';
 import { useOrderChat } from '../hooks/useOrderChat';
+import { supabase } from '../lib/supabase';
 
 const { Content, Sider } = Layout;
 const { Text, Title } = Typography;
@@ -103,6 +104,36 @@ const InboxPage: React.FC = () => {
             socket.off('new_message_global', handleGlobalUpdate);
         };
     }, [socket]);
+
+    // Supabase realtime subscription for messages
+    useEffect(() => {
+        if (!selectedContact || !activeOrder) return;
+
+        const channel = supabase
+            .channel(`messages:${activeOrder.main_id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `main_id=eq.${activeOrder.main_id}`
+                },
+                (payload) => {
+                    const newMessage = payload.new as Message;
+                    setMessages(prev => {
+                        // Avoid duplicates
+                        if (prev.some(m => m.id === newMessage.id)) return prev;
+                        return [...prev, newMessage];
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [selectedContact?.id, activeOrder?.main_id]);
 
     // Handle URL param selection
     useEffect(() => {
