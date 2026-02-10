@@ -173,12 +173,38 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
 
             if (isVoice) {
                 return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 160, marginTop: 8 }}>
-                        <div onClick={(e) => { e.stopPropagation(); toggleAudio(); }} style={{ cursor: 'pointer', fontSize: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 200, padding: '8px 4px' }}>
+                        <div
+                            onClick={(e) => { e.stopPropagation(); toggleAudio(); }}
+                            style={{
+                                cursor: 'pointer',
+                                fontSize: 28,
+                                background: 'rgba(255,255,255,0.2)',
+                                borderRadius: '50%',
+                                width: 40,
+                                height: 40,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
                             {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                         </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                            <div style={{ height: 4, background: 'rgba(255,255,255,0.3)', borderRadius: 2, width: '100%', marginBottom: 4 }}>
+                                <div style={{
+                                    height: '100%',
+                                    background: 'currentColor',
+                                    width: isPlaying ? '100%' : '0%', // Simplified progress 
+                                    transition: 'width 0.2s',
+                                    animation: isPlaying ? 'progress 10s linear infinite' : 'none'
+                                }} />
+                            </div>
+                            <span style={{ fontSize: 11, opacity: 0.8 }}>
+                                {msg.voice_duration ? formatTime(new Date(0).setSeconds(msg.voice_duration || 0)).substr(3) : '0:00'}
+                            </span>
+                        </div>
                         <audio ref={audioRef} src={effectiveFileUrl} onEnded={() => setIsPlaying(false)} style={{ display: 'none' }} />
-                        {msg.voice_duration && <span style={{ fontSize: 11 }}>{formatTime(new Date(0).setSeconds(msg.voice_duration || 0)).substr(3)}</span>}
                     </div>
                 );
             }
@@ -187,6 +213,21 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                 return (
                     <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
                         <Image width="100%" src={effectiveFileUrl} alt="attachment" style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }} preview={{ mask: false }} />
+                    </div>
+                );
+            }
+
+            const isVideo = effectiveFileUrl.match(/\.(mp4|webm|mov|quicktime)$/i) || msg.message_type === 'video';
+
+            if (isVideo) {
+                return (
+                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
+                        <video
+                            width="100%"
+                            controls
+                            src={effectiveFileUrl}
+                            style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
+                        />
                     </div>
                 );
             }
@@ -251,7 +292,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                     trigger={['contextMenu']}
                 >
                     <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
-                        {!isFromClient && (
+                        {!isFromClient && !isOwn && (
                             <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
                                 {msg.sender?.name || msg.user || 'Оператор'}
                             </div>
@@ -282,6 +323,16 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                         {displayText && (
                             <div style={{ fontSize: 14, lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: msg.file_url ? 8 : 0 }}>
                                 {linkifyText(displayText)}
+                            </div>
+                        )}
+
+                        {displayButtons && displayButtons.length > 0 && (
+                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {displayButtons.map((btn: any, idx: number) => (
+                                    <AntButton key={idx} size="small" type="primary" ghost block href={btn.url} target="_blank">
+                                        {btn.text}
+                                    </AntButton>
+                                ))}
                             </div>
                         )}
 

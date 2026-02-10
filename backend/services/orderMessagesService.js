@@ -204,11 +204,39 @@ class OrderMessagesService {
                 try {
                     const formData = new FormData();
                     formData.append('chat_id', contact.telegram_user_id);
-                    formData.append('document', fs.createReadStream(file.path), { filename: originalName, contentType: file.mimetype });
-                    if (caption) formData.append('caption', caption);
+
+                    const isImage = file.mimetype.startsWith('image');
+                    const method = isImage ? 'sendPhoto' : 'sendDocument';
+                    const fileField = isImage ? 'photo' : 'document';
+
+                    formData.append(fileField, fs.createReadStream(file.path), { filename: originalName, contentType: file.mimetype });
+
+                    let finalCaption = caption;
+                    let replyMarkup = null;
+
+                    if (caption && caption.trim().startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(caption);
+                            if (parsed.text || parsed.buttons) {
+                                finalCaption = parsed.text || '';
+                                if (parsed.buttons && Array.isArray(parsed.buttons)) {
+                                    const urlButtons = parsed.buttons.filter(b => b.type === 'url');
+                                    if (urlButtons.length > 0) {
+                                        const inlineKeyboard = urlButtons.map(b => ({ text: b.text, url: b.url }));
+                                        replyMarkup = { inline_keyboard: inlineKeyboard.map(b => [b]) };
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            // Valid JSON check failed, treat as raw text
+                        }
+                    }
+
+                    if (finalCaption) formData.append('caption', finalCaption);
+                    if (replyMarkup) formData.append('reply_markup', JSON.stringify(replyMarkup));
                     if (replyToMessageId) formData.append('reply_to_message_id', replyToMessageId);
 
-                    const tgResponse = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`, formData, {
+                    const tgResponse = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, formData, {
                         headers: formData.getHeaders()
                     });
                     telegramMessageId = tgResponse.data?.result?.message_id;
