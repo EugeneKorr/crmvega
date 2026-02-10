@@ -505,13 +505,27 @@ class OrderMessagesService {
         const { data: internalMsgs } = await internalQuery;
 
         // Normalize and Merge
-        const unified = [
-            ...(clientMsgs || []).map(m => ({ ...m, type: 'client', date: m['Created Date'] })),
-            ...(internalMsgs || []).map(m => ({ ...m, type: 'internal', date: m.created_at }))
-        ].sort((a, b) => new Date(b.date) - new Date(a.date))
-            .slice(0, limit);
+        const allMessages = [
+            ...(clientMsgs || []).map(m => ({ ...m, type: 'client', date: m['Created Date'] || m.created_at, sort_date: m['Created Date'] || m.created_at })),
+            ...(internalMsgs || []).map(m => ({ ...m, type: 'internal', date: m.created_at, sort_date: m.created_at, message_type: 'text' })) // Internal default text
+        ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        return { messages: unified };
+        const messages = allMessages.slice(0, limit);
+
+        // Simple heuristic for has_more: if we got full limit from either source, assume more exists.
+        // Or better: if total fetched > limit (since we fetch limit from EACH), we definitely have more.
+        // If total fetched < limit, we are done.
+        // If total fetched == limit, unclear, but unlikely if we fetch limit from each.
+        const has_more = allMessages.length > limit || (clientMsgs?.length === limit) || (internalMsgs?.length === limit);
+
+        return {
+            messages,
+            meta: {
+                total_fetched: messages.length,
+                limit,
+                has_more
+            }
+        };
     }
 }
 
