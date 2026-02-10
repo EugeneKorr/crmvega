@@ -57,7 +57,20 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     const align = alignment || (isFromClient ? 'left' : 'right');
     const isRight = align === 'right';
     const [isPlaying, setIsPlaying] = useState(false);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+
+    const parseContent = (content: string) => {
+        try {
+            if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+                const parsed = JSON.parse(content);
+                if (parsed && (parsed.text !== undefined || parsed.buttons !== undefined)) {
+                    return { text: parsed.text || '', buttons: parsed.buttons || [], isJson: true };
+                }
+            }
+        } catch (e) { }
+        return { text: content, buttons: [], isJson: false };
+    };
+
     const [menuOpen, setMenuOpen] = useState(false);
 
     const handleCopy = () => {
