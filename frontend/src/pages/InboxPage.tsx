@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import io from 'socket.io-client';
-
+import { useSocket } from '../contexts/SocketContext';
 import { contactsAPI, contactMessagesAPI, orderMessagesAPI, ordersAPI, messagesAPI } from '../services/api';
 import { InboxContact, Message, Order, ORDER_STATUSES } from '../types';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -40,6 +39,7 @@ interface ExtendedInboxContact extends InboxContact {
 
 const InboxPage: React.FC = () => {
     const { manager } = useAuth();
+    const { socket } = useSocket();
     const [searchParams, setSearchParams] = useSearchParams();
     const [contacts, setContacts] = useState<ExtendedInboxContact[]>([]);
     const [selectedContact, setSelectedContact] = useState<ExtendedInboxContact | null>(null);
@@ -55,7 +55,6 @@ const InboxPage: React.FC = () => {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const selectedContactRef = useRef<number | null>(null);
-    const socketRef = useRef<Socket | null>(null);
 
     const [totalMessages, setTotalMessages] = useState(0);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -83,29 +82,10 @@ const InboxPage: React.FC = () => {
     // Initial load
     useEffect(() => {
         fetchContacts();
+    }, [showUnreadOnly, filterStages, searchQuery]);
 
-        // Socket connection
-        const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
-        socketRef.current = io(socketUrl, {
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionAttempts: 10,
-            reconnectionDelay: 1000,
-        });
-
-        socketRef.current.on('connect', () => {
-            console.log('Socket connected in Inbox');
-        });
-
-        return () => {
-            socketRef.current?.disconnect();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showUnreadOnly, filterStages]);
-
-    // Listen for new messages
     useEffect(() => {
-        if (!socketRef.current) return;
+        if (!socket) return;
 
         const handleNewMessage = (msg: any) => {
             console.log('📨 SOCKET EVENT: new_message/new_client_message received', msg);
@@ -116,7 +96,6 @@ const InboxPage: React.FC = () => {
             const messageTime = msg.created_at || msg['Created Date'] || new Date().toISOString();
 
             setContacts(prev => {
-                console.log('📨 Current contacts in state:', prev.length);
                 const contactExists = prev.some(c => c.id === contact_id);
 
                 if (!contactExists) {
@@ -184,34 +163,34 @@ const InboxPage: React.FC = () => {
             }
         };
 
-        socketRef.current.on('new_message', handleNewMessage);
-        socketRef.current.on('new_client_message', handleNewMessage);
-        socketRef.current.on('message_updated', handleMessageUpdated);
-        socketRef.current.on('connect', handleReconnect);
+        socket.on('new_message', handleNewMessage);
+        socket.on('new_client_message', handleNewMessage);
+        socket.on('message_updated', handleMessageUpdated);
+        socket.on('connect', handleReconnect);
 
         // Join active lead room
         if (activeOrder?.main_id) {
             console.log('🔌 Joining room main_', activeOrder.main_id);
-            socketRef.current.emit('join_main', activeOrder.main_id);
+            socket.emit('join_main', activeOrder.main_id);
         }
 
         // Join rooms for all currently loaded contacts
         if (contacts.length > 0) {
             console.log(`🔌 Joining ${contacts.length} contact rooms...`);
             contacts.forEach(c => {
-                socketRef.current?.emit('join_contact', c.id);
+                socket.emit('join_contact', c.id);
             });
         }
 
         return () => {
             console.log('🔌 Cleaning up socket listeners');
-            socketRef.current?.off('new_message', handleNewMessage);
-            socketRef.current?.off('new_client_message', handleNewMessage);
-            socketRef.current?.off('message_updated', handleMessageUpdated);
-            socketRef.current?.off('connect', handleReconnect);
+            socket.off('new_message', handleNewMessage);
+            socket.off('new_client_message', handleNewMessage);
+            socket.off('message_updated', handleMessageUpdated);
+            socket.off('connect', handleReconnect);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeOrder]);
+    }, [activeOrder, socket, contacts.length]);
 
     // Handle URL param selection
     useEffect(() => {
@@ -258,9 +237,9 @@ const InboxPage: React.FC = () => {
             setContacts(filteredContacts);
 
             // Join rooms for all newly loaded contacts
-            if (socketRef.current) {
+            if (socket) {
                 filteredContacts.forEach(c => {
-                    socketRef.current?.emit('join_contact', c.id);
+                    socket.emit('join_contact', c.id);
                 });
             }
         } catch (error) {

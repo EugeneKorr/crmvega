@@ -35,6 +35,7 @@ class BubbleService {
 
     // --- Message Processing ---
     async processMessage(payload, io) {
+        console.log('[Bubble Service] Incoming message payload:', JSON.stringify(payload, null, 2));
         const {
             lead_id, content, 'Created Date': createdDate, author_type, message_type,
             message_id_tg, timestamp, 'Modified Date': modifiedDate, 'Created By': createdBy,
@@ -43,6 +44,7 @@ class BubbleService {
         } = payload;
 
         const finalMainId = this.sanitizeNumeric(main_ID);
+        console.log('[Bubble Service] Resolved main_id:', finalMainId);
         const processedContent = this.cleanNull(content);
         const finalFileUrl = this.cleanNull(file_url);
         const finalFileName = this.cleanNull(file_name);
