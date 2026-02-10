@@ -159,92 +159,82 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
         }
     };
 
+    const { text: rawText, buttons: displayButtons } = msg.content ? parseContent(msg.content) : { text: '', buttons: [] };
+
+    // Detect Attachment Types
+    const effectiveFileUrl = msg.file_url || msg.attachment_url || (msg as any).attachment_url_internal || (
+        (/^https?:\/\/[^\s]+$/i.test(msg.content?.trim() || ''))
+            ? msg.content?.trim()
+            : null
+    );
+
+    const isVoice = msg.message_type === 'voice' || (effectiveFileUrl && (effectiveFileUrl.endsWith('.ogg') || effectiveFileUrl.endsWith('.oga') || effectiveFileUrl.endsWith('.wav') || effectiveFileUrl.endsWith('.mp3')));
+    const isImage = (effectiveFileUrl && effectiveFileUrl.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i)) || (effectiveFileUrl && effectiveFileUrl.includes('bubble.io') && !effectiveFileUrl.includes('.') && !msg.file_name);
+    const isVideo = msg.message_type === 'video' || (effectiveFileUrl && effectiveFileUrl.match(/\.(mp4|webm|mov|quicktime)$/i));
+
+    // Hide text if it is just the link or if it is a media message
+    const shouldHideText = isVoice || isImage || isVideo || (rawText?.trim() === effectiveFileUrl?.trim()) || ['📎 Файл', '📷 Изображение', '🎤 Голосовое сообщение'].includes(rawText?.trim() || '');
+    const displayText = shouldHideText ? '' : rawText;
+
     const renderAttachment = () => {
-        const effectiveFileUrl = msg.file_url || msg.attachment_url || (msg as any).attachment_url_internal || (
-            (/^https?:\/\/[^\s]+$/i.test(msg.content?.trim() || ''))
-                ? msg.content?.trim()
-                : null
-        );
+        if (!effectiveFileUrl) return null;
 
-        if (effectiveFileUrl) {
-            const isImage = effectiveFileUrl.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i) || (effectiveFileUrl.includes('bubble.io') && !effectiveFileUrl.includes('.') && !msg.file_name);
-            const isVoice = msg.message_type === 'voice' || effectiveFileUrl.endsWith('.ogg') || effectiveFileUrl.endsWith('.wav');
-            const fileName = msg.file_name || 'file';
-
-            if (isVoice) {
-                return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120, marginTop: 4 }}>
-                        <div
-                            onClick={(e) => { e.stopPropagation(); toggleAudio(); }}
-                            style={{
-                                cursor: 'pointer',
-                                fontSize: 24,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}
-                        >
-                            {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                        </div>
-                        <span style={{ fontSize: 12 }}>
-                            {msg.voice_duration ? new Date(msg.voice_duration * 1000).toISOString().substr(14, 5) : '0:00'}
-                        </span>
-                        <audio ref={audioRef} src={effectiveFileUrl} onEnded={() => setIsPlaying(false)} style={{ display: 'none' }} />
-                    </div>
-                );
-            }
-
-            if (isImage) {
-                return (
-                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
-                        <Image width="100%" src={effectiveFileUrl} alt="attachment" style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }} preview={{ mask: false }} />
-                    </div>
-                );
-            }
-
-            const isVideo = effectiveFileUrl.match(/\.(mp4|webm|mov|quicktime)$/i) || msg.message_type === 'video';
-
-            if (isVideo) {
-                return (
-                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
-                        <video
-                            width="100%"
-                            controls
-                            src={effectiveFileUrl}
-                            style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
-                        />
-                    </div>
-                );
-            }
-
-            if (effectiveFileUrl.startsWith('http')) {
-                return (
+        if (isVoice) {
+            return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120, marginTop: 4 }}>
                     <div
-                        onClick={(e) => { e.stopPropagation(); handleDownload(effectiveFileUrl!, fileName); }}
-                        style={{ color: styles.linkColor, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); toggleAudio(); }}
+                        style={{
+                            cursor: 'pointer',
+                            fontSize: 24,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
                     >
-                        <DownloadOutlined /> {msg.file_name || 'Скачать файл'}
+                        {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                     </div>
-                );
-            }
+                    <span style={{ fontSize: 12 }}>
+                        {msg.voice_duration ? new Date(msg.voice_duration * 1000).toISOString().substr(14, 5) : '0:00'}
+                    </span>
+                    <audio ref={audioRef} src={effectiveFileUrl} onEnded={() => setIsPlaying(false)} style={{ display: 'none' }} />
+                </div>
+            );
+        }
+
+        if (isImage) {
+            return (
+                <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
+                    <Image width="100%" src={effectiveFileUrl} alt="attachment" style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }} preview={{ mask: false }} />
+                </div>
+            );
+        }
+
+        if (isVideo) {
+            return (
+                <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
+                    <video
+                        width="100%"
+                        controls
+                        src={effectiveFileUrl}
+                        style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
+                    />
+                </div>
+            );
+        }
+
+        if (effectiveFileUrl.startsWith('http')) {
+            return (
+                <div
+                    onClick={(e) => { e.stopPropagation(); handleDownload(effectiveFileUrl!, msg.file_name || 'file'); }}
+                    style={{ color: styles.linkColor, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer' }}
+                >
+                    <DownloadOutlined /> {msg.file_name || 'Скачать файл'}
+                </div>
+            );
         }
         return null;
     };
-
-    const parseContent = (content: string) => {
-        try {
-            if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
-                const parsed = JSON.parse(content);
-                if (parsed && (parsed.text !== undefined || parsed.buttons !== undefined)) {
-                    return { text: parsed.text || '', buttons: parsed.buttons || [], isJson: true };
-                }
-            }
-        } catch (e) { }
-        return { text: content, buttons: [], isJson: false };
-    };
-
-    const { text: rawText, buttons: displayButtons } = msg.content ? parseContent(msg.content) : { text: '', buttons: [] };
-    const displayText = !['📎 Файл', '📷 Изображение', '🎤 Голосовое сообщение'].includes(rawText?.trim()) ? rawText : '';
 
     return (
         <div className="message-bubble-container" style={{
