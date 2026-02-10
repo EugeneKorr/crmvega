@@ -150,7 +150,7 @@ const InboxPage: React.FC = () => {
     const isMobile = !screens.md;
 
     return (
-        <Layout style={{ height: 'calc(100vh - 64px)', background: '#fff' }}>
+        <Layout style={{ height: 'calc(100vh - 64px)', background: '#fff', overflow: 'hidden' }}>
             {(!isMobile || !selectedContact) && (
                 <Sider
                     width={isMobile ? '100%' : 350}
@@ -268,14 +268,12 @@ const InboxPage: React.FC = () => {
                                     )}
                                 </div>
                             </div>
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                                <UnifiedContactChat
-                                    contactId={selectedContact.id}
-                                    activeOrder={activeOrder}
-                                    isMobile={isMobile}
-                                    style={{ flex: 1 }}
-                                />
-                            </div>
+                            <UnifiedContactChat
+                                contactId={selectedContact.id}
+                                activeOrder={activeOrder}
+                                isMobile={isMobile}
+                                style={{ flex: 1, minHeight: 0 }}
+                            />
                         </>
                     ) : (
                         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f5f5f5' }}>
