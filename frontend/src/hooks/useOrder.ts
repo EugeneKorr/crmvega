@@ -10,7 +10,7 @@ export const useOrder = (id: string | undefined) => {
     const { socket } = useSocket();
 
     const fetchOrder = useCallback(async () => {
-        if (!id) return;
+        if (!id || loading) return;
         setLoading(true);
         try {
             const data = await ordersAPI.getById(Number(id));
@@ -21,7 +21,7 @@ export const useOrder = (id: string | undefined) => {
         } finally {
             setLoading(false);
         }
-    }, [id]);
+    }, [id]); // loading removed from deps as it's handled internally
 
     const updateOrder = async (updateData: Partial<Order>) => {
         if (!order) return;

@@ -23,6 +23,11 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     const [sending, setSending] = useState(false);
     const [replyTo, setReplyTo] = useState<TimelineMessage | null>(null);
 
+    const messagesRef = useRef<TimelineMessage[]>([]);
+    useEffect(() => {
+        messagesRef.current = messages;
+    }, [messages]);
+
     const fetchTimeline = useCallback(async (loadMore = false) => {
         try {
             if (!loadMore) setLoading(true);
@@ -31,8 +36,8 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             const limit = 50;
             let before: string | undefined = undefined;
 
-            if (loadMore && messages.length > 0) {
-                const oldest = messages[messages.length - 1];
+            if (loadMore && messagesRef.current.length > 0) {
+                const oldest = messagesRef.current[messagesRef.current.length - 1];
                 before = oldest.sort_date || oldest.created_at || oldest['Created Date'];
             }
 
@@ -61,7 +66,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             if (!loadMore) setLoading(false);
             else setLoadingMore(false);
         }
-    }, [orderId, messages.length]);
+    }, [orderId]); // Only depend on orderId
 
     // Actions
     const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number) => {
