@@ -1,7 +1,8 @@
 {
+    "outputDirectory": "build",
     "rewrites": [
         {
-            "source": "/:path*",
+            "source": "/(.*)",
             "destination": "/index.html"
         }
     ]
