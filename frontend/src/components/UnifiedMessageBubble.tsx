@@ -2,8 +2,10 @@ import React, { useState, useRef } from 'react';
 import {
     Avatar,
     Popover,
+    Dropdown,
     message as antMessage
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
     PlayCircleOutlined,
     PauseCircleOutlined,
@@ -57,8 +59,48 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
-    const isLongPress = useRef(false);
+
+    const handleCopy = () => {
+        if (msg.content) {
+            navigator.clipboard.writeText(msg.content)
+                .then(() => antMessage.success('Скопировано'))
+                .catch(() => antMessage.error('Ошибка копирования'));
+        }
+        setMenuOpen(false);
+    };
+
+    const handleReactionClick = (emoji: string) => {
+        if (onAddReaction) onAddReaction(msg, emoji);
+        setMenuOpen(false);
+    };
+
+    const menuItems: MenuProps['items'] = [
+        {
+            key: 'reply',
+            label: 'Ответить',
+            icon: <RollbackOutlined />,
+            onClick: () => { onReply && onReply(msg); }
+        },
+        {
+            key: 'copy',
+            label: 'Копировать',
+            icon: <CopyOutlined />,
+            disabled: !msg.content,
+            onClick: handleCopy
+        },
+        {
+            type: 'divider',
+        },
+        {
+            key: 'reactions',
+            label: 'Реакции',
+            children: DEFAULT_REACTIONS.map(emoji => ({
+                key: `reaction-${emoji}`,
+                label: <span style={{ fontSize: 18 }}>{emoji}</span>,
+                onClick: () => handleReactionClick(emoji)
+            }))
+        }
+    ];
 
     const getBubbleStyles = () => {
         if (msg.message_type === 'system') {
@@ -89,20 +131,6 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
 
     const styles = getBubbleStyles();
 
-    const handleCopy = () => {
-        if (msg.content) {
-            navigator.clipboard.writeText(msg.content)
-                .then(() => antMessage.success('Скопировано'))
-                .catch(() => antMessage.error('Ошибка копирования'));
-        }
-        setMenuOpen(false);
-    };
-
-    const handleReactionClick = (emoji: string) => {
-        if (onAddReaction) onAddReaction(msg, emoji);
-        setMenuOpen(false);
-    };
-
     const toggleAudio = () => {
         if (!audioRef.current) return;
         if (isPlaying) {
@@ -113,42 +141,6 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
         setIsPlaying(!isPlaying);
     };
 
-    const contentMenu = (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 4 }}>
-            <div style={{ display: 'flex', gap: 4, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
-                {DEFAULT_REACTIONS.map(emoji => (
-                    <div
-                        key={emoji}
-                        onClick={() => handleReactionClick(emoji)}
-                        style={{ fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 4, transition: 'background 0.2s' }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                        {emoji}
-                    </div>
-                ))}
-            </div>
-
-            <div
-                style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 4px', borderRadius: 4 }}
-                onClick={() => { onReply && onReply(msg); setMenuOpen(false); }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-                <RollbackOutlined /> Ответить
-            </div>
-            {msg.content && (
-                <div
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 4px', borderRadius: 4 }}
-                    onClick={handleCopy}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                    <CopyOutlined /> Копировать текст
-                </div>
-            )}
-        </div>
-    );
 
     const handleDownload = async (url: string, filename: string) => {
         try {
@@ -254,83 +246,64 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                     {msg.author_type && msg.author_type !== 'customer' ? msg.author_type.charAt(0).toUpperCase() : <UserOutlined />}
                 </Avatar>
 
-                <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
-                    {!isFromClient && (
-                        <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
-                            {msg.sender?.name || msg.user || 'Оператор'}
-                        </div>
-                    )}
-
-                    <div className="message-hover-actions" style={{
-                        position: 'absolute',
-                        right: isRight ? 'auto' : -30,
-                        left: isRight ? -30 : 'auto',
-                        top: 0,
-                        display: 'none',
-                        flexDirection: 'column',
-                        gap: 4
-                    }}>
-                        {onReply && (
-                            <AntButton
-                                size="small"
-                                type="text"
-                                icon={<RollbackOutlined />}
-                                onClick={() => onReply(msg)}
-                                style={{ color: '#8c8c8c', background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: 28, height: 28, padding: 0 }}
-                            />
+                <Dropdown
+                    menu={{ items: menuItems }}
+                    trigger={['contextMenu']}
+                >
+                    <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
+                        {!isFromClient && (
+                            <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
+                                {msg.sender?.name || msg.user || 'Оператор'}
+                            </div>
                         )}
-                    </div>
 
-                    {renderAttachment()}
-
-                    {displayText && (
-                        <div style={{ fontSize: 14, lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: msg.file_url ? 8 : 0 }}>
-                            {linkifyText(displayText)}
-                        </div>
-                    )}
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 4, opacity: 0.7, fontSize: 10 }}>
-                        {isError ? (
-                            <span style={{ color: '#ff4d4f', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <ExclamationCircleFilled /> Ошибка
-                            </span>
-                        ) : (
-                            <>
-                                {formatTime(msg['Created Date'] || msg.created_at)}
-                                {isPending ? (
-                                    <ClockCircleOutlined style={{ animation: 'spin 2s linear infinite' }} />
-                                ) : (
-                                    isOwn && <span style={{ color: isRight ? 'white' : '#1890ff', fontWeight: 'bold' }}>✓</span>
-                                )}
-                            </>
-                        )}
-                    </div>
-
-                    <Popover content={contentMenu} trigger="click" open={menuOpen} onOpenChange={setMenuOpen} placement="bottom">
-                        <div style={{
-                            cursor: 'pointer',
+                        <div className="message-hover-actions" style={{
                             position: 'absolute',
-                            right: isRight ? 'auto' : -32,
-                            left: isRight ? -32 : 'auto',
+                            right: isRight ? 'auto' : -30,
+                            left: isRight ? -30 : 'auto',
                             top: 0,
-                            opacity: menuOpen ? 1 : 0.4,
-                            background: menuOpen ? '#f0f0f0' : 'rgba(0,0,0,0.03)',
-                            borderRadius: '50%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            transition: 'all 0.2s',
-                            zIndex: 10,
-                            border: '1px solid transparent'
-                        }}
-                            className="message-menu-trigger"
-                        >
-                            <span style={{ fontSize: 20, marginBottom: 4 }}>⋮</span>
+                            display: 'none',
+                            flexDirection: 'column',
+                            gap: 4
+                        }}>
+                            {onReply && (
+                                <AntButton
+                                    size="small"
+                                    type="text"
+                                    icon={<RollbackOutlined />}
+                                    onClick={() => onReply(msg)}
+                                    style={{ color: '#8c8c8c', background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: 28, height: 28, padding: 0 }}
+                                />
+                            )}
                         </div>
-                    </Popover>
-                </div>
+
+                        {renderAttachment()}
+
+                        {displayText && (
+                            <div style={{ fontSize: 14, lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: msg.file_url ? 8 : 0 }}>
+                                {linkifyText(displayText)}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 4, opacity: 0.7, fontSize: 10 }}>
+                            {isError ? (
+                                <span style={{ color: '#ff4d4f', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <ExclamationCircleFilled /> Ошибка
+                                </span>
+                            ) : (
+                                <>
+                                    {formatTime(msg['Created Date'] || msg.created_at)}
+                                    {isPending ? (
+                                        <ClockCircleOutlined style={{ animation: 'spin 2s linear infinite' }} />
+                                    ) : (
+                                        isOwn && <span style={{ color: isRight ? 'white' : '#1890ff', fontWeight: 'bold' }}>✓</span>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                    </div>
+                </Dropdown>
             </div>
 
             {msg.reactions && msg.reactions.length > 0 && (
