@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { UnifiedMessageBubble } from './UnifiedMessageBubble';
 import { ChatInput } from './ChatInput';
 import { formatDate, isClientMessage } from '../utils/chatUtils';
-import { contactMessagesAPI, orderMessagesAPI } from '../services/api';
+import { contactMessagesAPI, orderMessagesAPI, messagesAPI } from '../services/api';
 import { supabase } from '../lib/supabase';
 
 interface UnifiedContactChatProps {
@@ -16,15 +16,6 @@ interface UnifiedContactChatProps {
     contactName?: string;
 }
 
-/**
- * Unified chat component that shows ALL messages for a contact (from all orders).
- * Features:
- * - Telegram-style infinite scroll (auto-load on scroll to top)
- * - Optimistic UI for sent messages
- * - Supabase realtime for live updates
- * - Prepends old messages at the top
- * - Preserves scroll position after loading
- */
 export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     contactId,
     activeOrder,
@@ -37,15 +28,14 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [totalMessages, setTotalMessages] = useState(0);
     const [sending, setSending] = useState(false);
+    const [replyTo, setReplyTo] = useState<Message | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const previousScrollHeightRef = useRef<number>(0);
     const isInitialLoadRef = useRef<boolean>(true);
 
-    // Scroll to bottom
     const scrollToBottom = useCallback((smooth = false) => {
         setTimeout(() => {
             if (messagesEndRef.current) {
@@ -54,7 +44,6 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }, 100);
     }, []);
 
-    // Fetch messages for contact
     const fetchMessages = async (loadMore = false) => {
         try {
             if (!loadMore) {
@@ -73,11 +62,9 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             const data = await contactMessagesAPI.getByContactId(contactId, { limit, offset });
 
             if (loadMore) {
-                // Prepend old messages at the TOP
                 setMessages(prev => [...data.messages, ...prev]);
                 setHasMore(data.messages.length >= limit);
 
-                // Restore scroll position after DOM updates
                 setTimeout(() => {
                     if (messagesContainerRef.current) {
                         const newScrollHeight = messagesContainerRef.current.scrollHeight;
@@ -87,7 +74,6 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 }, 0);
             } else {
                 setMessages(data.messages);
-                setTotalMessages(data.total);
                 setHasMore(data.messages.length >= limit);
             }
         } catch (error: any) {
@@ -99,14 +85,10 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }
     };
 
-    // Initial load
     useEffect(() => {
-        if (contactId) {
-            fetchMessages(false);
-        }
+        if (contactId) fetchMessages(false);
     }, [contactId]);
 
-    // Auto-scroll to bottom ONLY on initial load
     useEffect(() => {
         if (messages.length > 0 && !isLoadingMessages && !loadingMore && isInitialLoadRef.current) {
             scrollToBottom(true);
@@ -114,7 +96,6 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }
     }, [messages.length, isLoadingMessages, loadingMore, scrollToBottom]);
 
-    // Infinite scroll: load more when scrolling near top
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const container = e.currentTarget;
         if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages) {
@@ -122,7 +103,6 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }
     };
 
-    // Supabase realtime subscription for messages
     useEffect(() => {
         if (!contactId || !activeOrder) return;
 
@@ -139,17 +119,28 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 (payload) => {
                     const newMessage = payload.new as Message;
                     setMessages(prev => {
-                        // Replace optimistic message or add new
                         const optimisticIndex = prev.findIndex(m => String(m.id).startsWith('temp-'));
                         if (optimisticIndex !== -1) {
                             const updated = [...prev];
                             updated[optimisticIndex] = newMessage;
                             return updated;
                         }
-                        // Avoid duplicates
-                        if (prev.some(m => m.id === newMessage.id)) return prev;
+                        if (prev.some(m => String(m.id) === String(newMessage.id))) return prev;
                         return [...prev, newMessage];
                     });
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `main_id=eq.${activeOrder.main_id}`
+                },
+                (payload) => {
+                    const updatedMsg = payload.new as Message;
+                    setMessages(prev => prev.map(m => String(m.id) === String(updatedMsg.id) ? { ...m, ...updatedMsg } : m));
                 }
             )
             .subscribe();
@@ -159,15 +150,27 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         };
     }, [contactId, activeOrder?.main_id]);
 
-    // Send message handlers
+    const handleAddReaction = async (msg: Message, emoji: string) => {
+        setMessages(prev => prev.map(m => {
+            if (String(m.id) === String(msg.id)) {
+                const reactions = m.reactions || [];
+                return { ...m, reactions: [...reactions, { emoji, author: 'Me', created_at: new Date().toISOString() }] };
+            }
+            return m;
+        }));
+        try {
+            await messagesAPI.addReaction(msg.id, emoji);
+        } catch (error) {
+            antMessage.error('Не удалось добавить реакцию');
+        }
+    };
+
     const handleSendMessage = async (text: string) => {
         if (!activeOrder?.id || !manager) return;
-
         setSending(true);
-
-        // Optimistic UI: add message immediately
+        const optimisticId = `temp-${Date.now()}`;
         const optimisticMessage: Message = {
-            id: `temp-${Date.now()}` as any,
+            id: optimisticId as any,
             content: text,
             author_type: 'manager',
             message_type: 'text',
@@ -175,20 +178,19 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             is_read: true,
             main_id: activeOrder.main_id,
             manager_id: manager.id,
-            lead_id: String(activeOrder.id),
-            status: 'pending' as any
+            status: 'pending' as any,
+            reply_to_mess_id_tg: replyTo?.message_id_tg
         };
-
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
+        const currentReplyTo = replyTo;
+        setReplyTo(null);
 
         try {
-            await orderMessagesAPI.sendClientMessage(activeOrder.id, text);
+            await orderMessagesAPI.sendClientMessage(activeOrder.id, text, Number(currentReplyTo?.message_id_tg) || undefined);
         } catch (error: any) {
-            console.error('Error sending message:', error);
-            antMessage.error('Ошибка отправки сообщения');
-            // Remove optimistic message on error
-            setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
+            antMessage.error('Ошибка отправки');
         } finally {
             setSending(false);
         }
@@ -197,12 +199,25 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     const handleSendVoice = async (voice: Blob, duration: number) => {
         if (!activeOrder?.id) return;
         setSending(true);
+        const optimisticId = `temp-voice-${Date.now()}`;
+        const optimisticMessage: Message = {
+            id: optimisticId as any,
+            content: '',
+            author_type: 'manager',
+            message_type: 'voice',
+            'Created Date': new Date().toISOString(),
+            is_read: true,
+            main_id: activeOrder.main_id,
+            status: 'pending' as any,
+            voice_duration: duration
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        scrollToBottom();
         try {
             await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration);
-            scrollToBottom();
-        } catch (error: any) {
-            console.error('Error sending voice:', error);
-            antMessage.error('Ошибка отправки голосового');
+        } catch (error) {
+            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
+            antMessage.error('Ошибка отправки ГС');
         } finally {
             setSending(false);
         }
@@ -211,18 +226,31 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     const handleSendFile = async (file: File, caption?: string) => {
         if (!activeOrder?.id) return;
         setSending(true);
+        const optimisticId = `temp-file-${Date.now()}`;
+        const isImage = file.type.startsWith('image/');
+        const optimisticMessage: Message = {
+            id: optimisticId as any,
+            content: caption || '',
+            author_type: 'manager',
+            message_type: isImage ? 'image' : 'file',
+            'Created Date': new Date().toISOString(),
+            is_read: true,
+            main_id: activeOrder.main_id,
+            status: 'pending' as any,
+            attachment_url: URL.createObjectURL(file)
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        scrollToBottom();
         try {
             await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
-            scrollToBottom();
         } catch (error: any) {
-            console.error('Error sending file:', error);
+            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
             antMessage.error('Ошибка отправки файла');
         } finally {
             setSending(false);
         }
     };
 
-    // Render messages grouped by date
     const renderMessages = () => {
         const groupedMessages: { date: string, msgs: Message[] }[] = [];
         messages.forEach(msg => {
@@ -242,12 +270,18 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 </div>
                 {group.msgs.map((msg, index) => {
                     const isOwn = !isClientMessage(msg.author_type);
+                    let replyCtx: Message | undefined = undefined;
+                    if (msg.reply_to_mess_id_tg) {
+                        replyCtx = messages.find(m => String(m.message_id_tg) === String(msg.reply_to_mess_id_tg));
+                    }
                     return (
                         <UnifiedMessageBubble
                             key={msg.id || index}
-                            msg={msg}
+                            msg={{ ...msg, replyContext: replyCtx }}
                             isOwn={isOwn}
                             variant="client"
+                            onAddReaction={handleAddReaction}
+                            onReply={(m) => setReplyTo(m)}
                         />
                     );
                 })}
@@ -256,34 +290,18 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     };
 
     return (
-        <div style={{
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            background: '#fff'
-        }}>
-            {/* Optional Header */}
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fff' }}>
             {showHeader && (
-                <div style={{
-                    padding: isMobile ? '12px 16px' : '16px 24px',
-                    borderBottom: '1px solid #f0f0f0',
-                    background: '#fafafa'
-                }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>
-                        {contactName || 'Чат с клиентом'}
-                    </div>
+                <div style={{ padding: isMobile ? '12px 16px' : '16px 24px', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{contactName || 'Чат с клиентом'}</div>
                 </div>
             )}
 
-            {/* Messages Area */}
             <div
                 ref={messagesContainerRef}
                 onScroll={handleScroll}
                 style={{
-                    flex: 1,
-                    padding: isMobile ? '12px' : '24px',
-                    overflowY: 'auto',
-                    background: '#f5f5f5',
+                    flex: 1, padding: isMobile ? '12px' : '24px', overflowY: 'auto', background: '#f5f5f5',
                     backgroundImage: 'url("https://gw.alipayobjects.com/zos/rmsportal/FfdJeJRQWjEeGTpqgBKj.png")',
                     backgroundBlendMode: 'overlay',
                 }}
@@ -292,28 +310,21 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                     <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
                 ) : (
                     <>
-                        {loadingMore && (
-                            <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                                <Spin size="small" />
-                            </div>
-                        )}
-                        {messages.length === 0 ? (
-                            <Empty description="Нет сообщений" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                        ) : (
-                            renderMessages()
-                        )}
+                        {loadingMore && <div style={{ textAlign: 'center', marginBottom: 16 }}><Spin size="small" /></div>}
+                        {messages.length === 0 ? <Empty description="Нет сообщений" image={Empty.PRESENTED_IMAGE_SIMPLE} /> : renderMessages()}
                         <div ref={messagesEndRef} />
                     </>
                 )}
             </div>
 
-            {/* Chat Input */}
             {activeOrder && (
                 <ChatInput
                     onSendText={handleSendMessage}
                     onSendVoice={handleSendVoice}
                     onSendFile={handleSendFile}
                     sending={sending}
+                    replyTo={replyTo}
+                    onCancelReply={() => setReplyTo(null)}
                 />
             )}
         </div>

@@ -10,43 +10,65 @@ export interface Manager {
 
 export interface Message {
   id: number;
-  lead_id: string; // Keep lead_id as it maps to main_id or legacy
   main_id?: string;
-  author_type: 'manager' | 'user' | 'customer' | 'Клиент' | 'Оператор' | 'Бот' | 'Админ' | 'Менеджер' | 'Служба заботы';
+  author_type: 'manager' | 'user' | 'customer' | 'client' | 'internal' | 'Клиент' | 'Оператор' | 'Бот' | 'Админ' | 'Менеджер' | 'Служба заботы' | 'system';
+  sender_type?: 'manager' | 'user' | 'client' | 'internal';
   content: string;
   message_type?: 'text' | 'image' | 'file' | 'voice' | 'video' | 'video_note' | 'sticker' | 'system';
+
+  // Telegram ID
   message_id_tg?: number | string;
+  telegram_message_id?: number | string;
+
+  // Timestamps
   timestamp?: number;
   'Modified Date'?: string;
-  'Created By'?: string;
+  'Created Date'?: string;
+  created_at?: string;
+
+  // Sender info
+  sender?: Manager;
+  manager_id?: number;
   author_amojo_id?: string;
   message_id_amo?: string;
   user?: string;
-  reply_to_mess_id_tg?: number | string;
-  caption?: string;
-  conversation_id?: string;
-  order_status?: string;
-  'Created Date'?: string;
-  created_at?: string;
-  sender?: Manager;
-  // Для файлов и голосовых
+  display_author?: string;
+
+  // Attachments
   file_url?: string;
   file_name?: string;
   voice_duration?: number;
-  // Для обратной совместимости
-  sender_type?: 'manager' | 'user';
-  sender_id?: number;
-  manager_id?: number; // Add manager_id
-  telegram_message_id?: number;
+  attachment_url?: string;
+  attachment_type?: string;
+  attachment_name?: string;
+  caption?: string;
+
+  // Replis and context
+  reply_to_mess_id_tg?: number | string;
+  reply_to_id?: number | string;
+  replyContext?: Message;
+  reply_to?: {
+    id: number;
+    content: string;
+    sender?: { name: string };
+  };
+
+  // Order context
+  conversation_id?: string;
+  order_status?: string;
+  order_title?: string;
+  order_id?: number;
+
+  // Metadata
   reactions?: any[];
-  status?: 'delivered' | 'read' | 'error' | 'blocked' | 'deleted_chat';
+  status?: 'delivered' | 'read' | 'error' | 'blocked' | 'deleted_chat' | 'pending';
   error_message?: string;
   is_read?: boolean;
 }
 
 export interface InternalMessage {
   id: number;
-  order_id: number; // Renamed from deal_id
+  order_id: number;
   sender_id: number;
   content: string;
   reply_to_id?: number;
@@ -79,39 +101,24 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Статусы заявок (бывшие сделки)
 export const ORDER_STATUSES = {
-  // Начальные этапы
   unsorted: { label: 'Неразобранное', color: 'default', icon: '📥', order: 0 },
-
-  // Принято операторами
   accepted_anna: { label: 'Принято Анна', color: 'cyan', icon: '👩', order: 1 },
   accepted_kostya: { label: 'Принято Костя', color: 'cyan', icon: '👨', order: 2 },
   accepted_stas: { label: 'Принято Стас', color: 'cyan', icon: '👨', order: 3 },
   accepted_lucy: { label: 'Принято Люси', color: 'cyan', icon: '👩', order: 4 },
-
-
-  // Рабочие этапы
   in_progress: { label: 'Работа с клиентом', color: 'blue', icon: '💼', order: 5 },
   survey: { label: 'Опрос', color: 'purple', icon: '📋', order: 6 },
-
-  // Передано исполнителям
   transferred_nikita: { label: 'Передано Никите', color: 'orange', icon: '🚀', order: 7 },
   transferred_val: { label: 'Передано Вал Александру', color: 'orange', icon: '🚀', order: 8 },
   transferred_ben: { label: 'Передано Бен Александру', color: 'orange', icon: '🚀', order: 9 },
   transferred_fin: { label: 'Передано Фин Александру', color: 'orange', icon: '🚀', order: 10 },
-
-  // Финальные этапы
   partially_completed: { label: 'Частично исполнена', color: 'lime', icon: '⏳', order: 11 },
   postponed: { label: 'Перенос на завтра', color: 'gold', icon: '📅', order: 12 },
-
-  // Закрытые
   client_rejected: { label: 'Отказ клиента', color: 'red', icon: '❌', order: 13 },
   duplicate: { label: 'Дубль или контакт', color: 'gray', icon: '👯', order: 17 },
   scammer: { label: 'Мошенник', color: 'magenta', icon: '🚫', order: 14 },
   moderation: { label: 'На модерации', color: 'geekblue', icon: '🔍', order: 15 },
-
-  // Успешно закрыта
   completed: { label: 'Успешно реализована', color: 'green', icon: '✅', order: 16 },
 } as const;
 
@@ -135,8 +142,8 @@ export interface Contact {
   updated_at: string;
   manager?: Manager;
   tags?: Tag[];
-  orders_count?: number; // Renamed from deals_count
-  orders_total_amount?: number; // Renamed
+  orders_count?: number;
+  orders_total_amount?: number;
   last_contact_at?: string;
   Date_LastOrder?: string;
   Loyality?: number;
@@ -155,20 +162,20 @@ export interface InboxContact extends Contact {
   responsible_person?: string;
 }
 
-export interface Order { // Renamed from Deal
+export interface Order {
   id: number;
   contact_id?: number;
-  lead_id?: number; // Legacy
-  main_id?: string; // Main ID
-  external_id?: string; // Legacy Bubble ID
-  title: string; // Alias for OrderName (legacy frontend support)
-  OrderName?: string; // New field
+  lead_id?: number;
+  main_id?: string;
+  external_id?: string;
+  title: string;
+  OrderName?: string;
   amount: number;
   currency: string;
   status: OrderStatus;
   source?: string;
-  description?: string; // Alias for Comment (legacy)
-  Comment?: string; // New field
+  description?: string;
+  Comment?: string;
   due_date?: string;
   closed_date?: string;
   close_reason?: string;
@@ -178,8 +185,6 @@ export interface Order { // Renamed from Deal
   contact?: Contact | { name?: string; email?: string; phone?: string } | null;
   manager?: Manager;
   tags?: Tag[];
-
-  // Bubble Synced Fields
   OrderDate?: string;
   CurrPair1?: string;
   CurrPair2?: string;
@@ -214,23 +219,19 @@ export interface Order { // Renamed from Deal
   Ordertime?: string;
   PayeeName?: string;
   tg_amo?: string;
-
   CashbackEUR?: number;
   CashbackUSDT?: number;
   LoyPoints?: number;
   SumEquivalentEUR?: number;
   SumPartly?: number;
-
   WhenDone?: string;
   first_order?: boolean;
   Is_application_accepted?: boolean;
   On_site?: boolean;
   Request_address?: boolean;
-
   Manager_Bubble?: string;
   Operators_Bubble?: string;
   BubbleUser?: string;
-
   plused_temp?: string;
   plused_temp2?: string;
   UndoStep?: string;
@@ -242,7 +243,7 @@ export interface Order { // Renamed from Deal
 export interface Note {
   id: number;
   contact_id?: number;
-  order_id?: number; // Renamed from deal_id
+  order_id?: number;
   manager_id: number;
   content: string;
   priority: 'urgent' | 'important' | 'info' | 'reminder';
@@ -303,7 +304,6 @@ export const ACTION_TYPES = {
   send_email: { label: 'Отправить email', icon: '📧' },
 } as const;
 
-// ... AI Types unchanged ...
 export interface AISettings {
   model: string;
   temperature: number;
@@ -439,7 +439,6 @@ export interface AIInstruction {
   created_by?: number;
   created_at: string;
   updated_at: string;
-  // Дополнительные поля от API
   level_info?: InstructionLevelInfo;
   can_edit?: boolean;
   can_delete?: boolean;

@@ -23,6 +23,8 @@ interface ChatInputProps {
     sending?: boolean;
     replacements?: Record<string, string>;
     placeholder?: string;
+    replyTo?: any;
+    onCancelReply?: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -32,7 +34,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     onTyping,
     sending = false,
     replacements = {},
-    placeholder
+    placeholder,
+    replyTo,
+    onCancelReply
 }) => {
     const { manager } = useAuth();
     const [messageInput, setMessageInput] = useState('');
@@ -62,8 +66,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         setMessageInput(val);
         if (onTyping) onTyping();
 
-        // Clear buttons if input is cleared completely?
-        // Or keep them until manually cleared? Let's keep for now but maybe show indicator.
         if (!val) setTemplateButtons([]);
 
         const slashIndex = val.lastIndexOf('/');
@@ -99,12 +101,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             contentText = template.content || '';
         }
 
-        // Apply replacements
         if (replacements) {
             Object.entries(replacements).forEach(([key, value]) => {
-                // Escape key for regex
                 const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                contentText = contentText.replace(new RegExp(escapedKey, 'g'), value);
+                contentText = contentText.replace(new RegExp(escapedKey, 'g'), String(value));
             });
         }
 
@@ -137,7 +137,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
     }, [audioPreviewUrl, previewUrl]);
 
-    // --- Voice Logic (unchanged) ---
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -199,7 +198,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
     };
 
-    // --- File & Paste Logic (unchanged) ---
     const handleFileSelect = (file: File) => {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setSelectedFile(file);
@@ -237,17 +235,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         setSelectedFile(null);
     };
 
-    // --- Combined Send Logic ---
     const handleSend = async () => {
         if (sending) return;
 
-        // If file exists, send file with text as caption
         if (selectedFile && onSendFile) {
             try {
-                // Если есть кнопки из шаблона, упаковываем caption в JSON
                 let caption = messageInput.trim();
                 if (templateButtons.length > 0) {
-                    // Упаковываем текст и кнопки в JSON для бэкенда
                     caption = JSON.stringify({ text: caption, buttons: templateButtons });
                 }
 
@@ -262,7 +256,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             return;
         }
 
-        // If no file, send text 
         if (messageInput.trim()) {
             try {
                 let contentToSend = messageInput;
@@ -289,12 +282,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
     };
 
-    // Helper to parse template content for preview
     const getTemplatePreview = (content?: string) => {
         if (!content) return '';
         try {
             const parsed = JSON.parse(content);
-            // Check if it's our structured format
             if (parsed.text !== undefined || parsed.attachments !== undefined || parsed.buttons !== undefined) {
                 const parts = [];
                 if (parsed.attachments?.length) parts.push('📎');
@@ -308,7 +299,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
     };
 
-    // --- Render ---
     return (
         <div style={{
             background: '#fff',
@@ -317,7 +307,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             flexDirection: 'column',
             position: 'relative'
         }}>
-            {/* Templates Popup */}
             {showTemplates && (
                 <div style={{
                     position: 'absolute',
@@ -355,7 +344,40 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     ))}
                 </div>
             )}
-            {/* File Preview Area */}
+
+            {replyTo && (
+                <div style={{
+                    padding: '8px 16px',
+                    borderLeft: '4px solid #1890ff',
+                    background: '#f0faff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12
+                }}>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: '#1890ff' }}>
+                            {replyTo.author_type === 'manager' ? 'Вы' : 'Клиент'}
+                        </div>
+                        <div style={{
+                            fontSize: 12,
+                            color: '#595959',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                        }}>
+                            {replyTo.content || (replyTo.message_type === 'voice' ? 'Голосовое сообщение' : 'Файл')}
+                        </div>
+                    </div>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<DeleteOutlined style={{ fontSize: 12 }} />}
+                        onClick={onCancelReply}
+                    />
+                </div>
+            )}
+
             {selectedFile && (
                 <div style={{
                     padding: '12px 16px',
@@ -402,7 +424,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 </div>
             )}
 
-            {/* Input Area */}
             <div style={{
                 padding: '12px 16px',
                 display: 'flex',
