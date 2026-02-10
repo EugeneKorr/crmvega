@@ -68,14 +68,16 @@ class OrderMessagesService {
             telegramUserId = contact?.telegram_user_id;
         }
 
-        if (!telegramUserId) throw new Error('Не найден Telegram ID клиента');
+        if (!telegramUserId) {
+            console.warn('Cannot send Telegram message: telegramUserId is missing for contact');
+            messageStatus = 'error';
+            errorMessage = 'Не найден Telegram ID клиента';
+        }
 
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         let telegramMessageId = null;
-        let messageStatus = 'delivered';
-        let errorMessage = null;
 
-        if (TELEGRAM_BOT_TOKEN) {
+        if (telegramUserId && TELEGRAM_BOT_TOKEN) {
             try {
                 let messageText = content;
                 let replyMarkup = null;
