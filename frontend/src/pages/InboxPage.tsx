@@ -107,42 +107,32 @@ const InboxPage: React.FC = () => {
     useEffect(() => {
         if (!socketRef.current) return;
 
-        const handleNewMessage = (data: { contact_id: number, message: Message }) => {
-            console.log('📨 InboxPage received socket message:', data);
-            console.log('📨 Message time:', data.message.created_at || data.message['Created Date']);
+        const handleNewMessage = (msg: any) => {
+            console.log('📨 InboxPage received socket message:', msg);
 
-            // Get the timestamp for sorting
-            const messageTime = data.message.created_at || data.message['Created Date'] || new Date().toISOString();
+            const contact_id = msg.contact_id;
+            const messageTime = msg.created_at || msg['Created Date'] || new Date().toISOString();
 
             setContacts(prev => {
-                console.log('📨 Current contacts count:', prev.length);
-
-                // Check if contact exists in the list
-                const contactExists = prev.some(c => c.id === data.contact_id);
+                const contactExists = prev.some(c => c.id === contact_id);
 
                 if (!contactExists) {
-                    // Contact not in list - this can happen if:
-                    // 1. It's a brand new contact
-                    // 2. Contact was filtered out
-                    // For now, we'll just skip adding and let the user refresh
-                    // In the future, we could fetch the contact details here
-                    console.log(`📨 Contact ${data.contact_id} not in list, skipping update`);
+                    console.log(`📨 Contact ${contact_id} not in list, skipping update`);
                     return prev;
                 }
 
-                console.log(`📨 Updating contact ${data.contact_id} with new message`);
+                console.log(`📨 Updating contact ${contact_id} with new message`);
 
                 // Update existing contact
                 const updated = prev.map(c => {
-                    if (c.id === data.contact_id) {
+                    if (c.id === contact_id) {
                         const updatedContact = {
                             ...c,
-                            last_message: data.message,
+                            last_message: msg,
                             last_message_at: messageTime,
                             last_active: messageTime, // Update for UI sorting
                             unread_count: (selectedContact?.id === c.id) ? 0 : (c.unread_count || 0) + 1
                         };
-                        console.log('📨 Updated contact:', updatedContact.name, 'new time:', messageTime);
                         return updatedContact;
                     }
                     return c;
@@ -164,16 +154,16 @@ const InboxPage: React.FC = () => {
             });
 
             // Update current chat if open
-            if (activeOrder && String(data.message.main_id) === String(activeOrder.main_id)) {
+            if (activeOrder && String(msg.main_id) === String(activeOrder.main_id)) {
                 setMessages(prev => {
-                    if (prev.some(m => String(m.id) === String(data.message.id))) return prev;
-                    return [...prev, data.message];
+                    if (prev.some(m => String(m.id) === String(msg.id))) return prev;
+                    return [...prev, msg];
                 });
                 scrollToBottom();
-            } else if (selectedContact?.id === data.contact_id) {
+            } else if (selectedContact?.id === contact_id) {
                 setMessages(prev => {
-                    if (prev.some(m => String(m.id) === String(data.message.id))) return prev;
-                    return [...prev, data.message];
+                    if (prev.some(m => String(m.id) === String(msg.id))) return prev;
+                    return [...prev, msg];
                 });
                 scrollToBottom();
             }
@@ -197,7 +187,7 @@ const InboxPage: React.FC = () => {
                 fetchMessages(selectedContact.id);
             }
             if (activeOrder?.main_id) {
-                socketRef.current?.emit('join_lead', activeOrder.main_id);
+                socketRef.current?.emit('join_main', activeOrder.main_id);
             }
         };
 
@@ -209,16 +199,13 @@ const InboxPage: React.FC = () => {
             }
         };
 
-        socketRef.current.on('connect', handleReconnect);
-        socketRef.current.io.on("reconnect", handleReconnect);
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        socketRef.current.on('contact_message', handleNewMessage);
+        socketRef.current.on('new_message', handleNewMessage);
+        socketRef.current.on('new_client_message', handleNewMessage);
         socketRef.current.on('message_updated', handleMessageUpdated);
 
         // Join active lead room
         if (activeOrder?.main_id) {
-            socketRef.current.emit('join_lead', activeOrder.main_id);
+            socketRef.current.emit('join_main', activeOrder.main_id);
         }
 
         return () => {
