@@ -148,6 +148,7 @@ const AppRoutes: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  console.log('🚀 ТЕСТОВАЯ СРЕДА (STAGING)');
   return (
     <ConfigProvider locale={ruRU}>
       <AuthProvider>
