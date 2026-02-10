@@ -353,7 +353,7 @@ router.get('/:id', auth, async (req, res) => {
     }
 
     // Dynamic lookup
-    query = query.eq(lookupField, lookupValue);
+    query = query.eq(lookupField, lookupValue).limit(1);
 
     let { data, error } = await query.maybeSingle();
 
