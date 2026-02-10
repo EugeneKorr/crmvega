@@ -166,13 +166,13 @@ const InboxPage: React.FC = () => {
             // Update current chat if open
             if (activeOrder && String(data.message.main_id) === String(activeOrder.main_id)) {
                 setMessages(prev => {
-                    if (prev.some(m => m.id === data.message.id)) return prev;
+                    if (prev.some(m => String(m.id) === String(data.message.id))) return prev;
                     return [...prev, data.message];
                 });
                 scrollToBottom();
             } else if (selectedContact?.id === data.contact_id) {
                 setMessages(prev => {
-                    if (prev.some(m => m.id === data.message.id)) return prev;
+                    if (prev.some(m => String(m.id) === String(data.message.id))) return prev;
                     return [...prev, data.message];
                 });
                 scrollToBottom();
@@ -455,8 +455,12 @@ const InboxPage: React.FC = () => {
                 return;
             }
             const newMsg = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
-            // Убрано оптимистичное обновление - сообщение придет через socket
-            // setMessages(prev => [...prev, newMsg]);
+            // Оптимистичное обновление с защитой от дублей (приводим ID к строке)
+            setMessages(prev => {
+                if (prev.some(m => String(m.id) === String(newMsg.id))) return prev;
+                return [...prev, newMsg];
+            });
+
             setContacts(prev => prev.map(c =>
                 c.id === selectedContact.id
                     ? { ...c, last_message: newMsg, last_message_at: newMsg.created_at || newMsg['Created Date'] }
