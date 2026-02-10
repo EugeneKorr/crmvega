@@ -717,7 +717,14 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
           contentType: req.file.mimetype,
         };
 
-        formData.append('document', req.file.buffer, fileOptions);
+        // Определяем, это изображение или документ
+        const isImage = req.file.mimetype.startsWith('image/');
+        const endpoint = isImage ? 'sendPhoto' : 'sendDocument';
+        const fieldName = isImage ? 'photo' : 'document';
+
+        console.log(`[OrderMessages File] 📷 File type: ${req.file.mimetype}, using ${endpoint}`);
+
+        formData.append(fieldName, req.file.buffer, fileOptions);
 
         if (captionText && captionText.trim()) {
           formData.append('caption', captionText);
@@ -738,7 +745,7 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
         }
 
         const response = await axios.post(
-          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`,
+          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${endpoint}`,
           formData,
           { headers: formData.getHeaders() }
         );
@@ -801,7 +808,13 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
 
             const retryFormData = new FormData();
             retryFormData.append('chat_id', telegramUserId);
-            retryFormData.append('document', req.file.buffer, {
+
+            // Используем те же endpoint и fieldName, что и в основной отправке
+            const isImage = req.file.mimetype.startsWith('image/');
+            const retryEndpoint = isImage ? 'sendPhoto' : 'sendDocument';
+            const retryFieldName = isImage ? 'photo' : 'document';
+
+            retryFormData.append(retryFieldName, req.file.buffer, {
               filename: originalName,
               contentType: req.file.mimetype,
             });
@@ -819,7 +832,7 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
             }
 
             const retryResponse = await axios.post(
-              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`,
+              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${retryEndpoint}`,
               retryFormData,
               { headers: retryFormData.getHeaders() }
             );
