@@ -455,7 +455,8 @@ const InboxPage: React.FC = () => {
                 return;
             }
             const newMsg = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
-            setMessages(prev => [...prev, newMsg]);
+            // Убрано оптимистичное обновление - сообщение придет через socket
+            // setMessages(prev => [...prev, newMsg]);
             setContacts(prev => prev.map(c =>
                 c.id === selectedContact.id
                     ? { ...c, last_message: newMsg, last_message_at: newMsg.created_at || newMsg['Created Date'] }

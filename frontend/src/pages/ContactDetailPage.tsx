@@ -404,10 +404,11 @@ const ContactDetailPage: React.FC = () => {
       }
 
       const newMsg = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption);
-      setMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
+      // Убираем ручное добавление - ждем события из сокета для избежания дублей
+      // setMessages(prev => {
+      //   if (prev.some(m => m.id === newMsg.id)) return prev;
+      //   return [...prev, newMsg];
+      // });
       scrollToBottom();
     } catch (error: any) {
       console.error('Error sending file:', error);
