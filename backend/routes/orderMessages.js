@@ -675,25 +675,15 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
                 console.log('[OrderMessages File] ✅ Created Inline Keyboard:', JSON.stringify(replyMarkup));
               }
 
-              // 2. Handle Action Buttons (Always Reply Keyboard for Bubble)
-              if (actionButtons.length > 0) {
+              // 2. Handle Action Buttons (Only if no URL buttons - URL buttons have priority)
+              if (actionButtons.length > 0 && !replyMarkup) {
                 const keyboardRows = actionButtons.map(b => [{ text: b.text }]);
-                const actionMarkup = {
+                replyMarkup = {
                   keyboard: keyboardRows,
                   resize_keyboard: true,
                   one_time_keyboard: true
                 };
-
-                // If we ALREADY have replyMarkup (for URLs), we need a secondary message for actions
-                if (replyMarkup) {
-                  // Отправим action кнопки отдельным сообщением после файла
-                  // Сохраняем для использования ниже
-                  var secondaryActionMarkup = actionMarkup;
-                  console.log('[OrderMessages File] 📤 Will send Action buttons in secondary message');
-                } else {
-                  replyMarkup = actionMarkup;
-                  console.log('[OrderMessages File] ✅ Created Reply Keyboard:', JSON.stringify(replyMarkup));
-                }
+                console.log('[OrderMessages File] ✅ Created Reply Keyboard:', JSON.stringify(replyMarkup));
               }
             }
           } catch (e) {
@@ -752,23 +742,7 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
         telegramMessageId = response.data?.result?.message_id;
         console.log(`[OrderMessages File] ✅ Sent to Telegram, message_id: ${telegramMessageId}`);
 
-        // Send Secondary Message (Action Buttons) if needed
-        if (typeof secondaryActionMarkup !== 'undefined' && secondaryActionMarkup) {
-          try {
-            await axios.post(
-              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-              {
-                chat_id: telegramUserId,
-                text: escapeMarkdownV2('Выберите действие:'),
-                parse_mode: 'MarkdownV2',
-                reply_markup: secondaryActionMarkup
-              }
-            );
-            console.log(`[OrderMessages File] ✅ Sent secondary action menu`);
-          } catch (secErr) {
-            console.error('[OrderMessages File] Error sending secondary action menu:', secErr.message);
-          }
-        }
+        // Removed secondary message - now showing only URL buttons (Inline) or Action buttons (Reply Keyboard)
       } catch (tgError) {
         console.error('[OrderMessages File] ❌ Telegram send error:', tgError.response?.data || tgError.message);
 
