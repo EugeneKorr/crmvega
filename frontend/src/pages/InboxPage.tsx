@@ -108,59 +108,56 @@ const InboxPage: React.FC = () => {
         if (!socketRef.current) return;
 
         const handleNewMessage = (msg: any) => {
-            console.log('📨 InboxPage received socket message:', msg);
+            console.log('📨 SOCKET EVENT: new_message/new_client_message received', msg);
 
             const contact_id = msg.contact_id;
+            console.log('📨 Target contact_id:', contact_id);
+
             const messageTime = msg.created_at || msg['Created Date'] || new Date().toISOString();
 
             setContacts(prev => {
+                console.log('📨 Current contacts in state:', prev.length);
                 const contactExists = prev.some(c => c.id === contact_id);
 
                 if (!contactExists) {
-                    console.log(`📨 Contact ${contact_id} not in list, skipping update`);
+                    console.warn(`📨 Contact ${contact_id} not found in the left list!`);
                     return prev;
                 }
 
-                console.log(`📨 Updating contact ${contact_id} with new message`);
-
+                console.log(`📨 Updating contact ${contact_id} in list...`);
                 // Update existing contact
                 const updated = prev.map(c => {
                     if (c.id === contact_id) {
-                        const updatedContact = {
+                        return {
                             ...c,
                             last_message: msg,
                             last_message_at: messageTime,
-                            last_active: messageTime, // Update for UI sorting
-                            unread_count: (selectedContact?.id === c.id) ? 0 : (c.unread_count || 0) + 1
+                            last_active: messageTime,
+                            unread_count: (selectedContactRef.current === c.id) ? 0 : (c.unread_count || 0) + 1
                         };
-                        return updatedContact;
                     }
                     return c;
                 });
 
-                console.log('📨 Sorting contacts...');
-
-                // IMPORTANT: Create a NEW array before sorting to trigger React re-render
-                // Array.sort() mutates the array, which React may not detect as a state change
                 const sorted = [...updated].sort((a, b) => {
                     const timeA = new Date(a.last_active || 0).getTime();
                     const timeB = new Date(b.last_active || 0).getTime();
                     return timeB - timeA;
                 });
 
-                console.log('📨 Sorted contacts, first 3:', sorted.slice(0, 3).map(c => ({ name: c.name, time: c.last_active })));
-
                 return sorted;
             });
 
             // Update current chat if open
-            if (activeOrder && String(msg.main_id) === String(activeOrder.main_id)) {
+            if (activeOrder && (String(msg.main_id) === String(activeOrder.main_id))) {
+                console.log('📨 Updating active chat (main_id match)');
                 setMessages(prev => {
                     if (prev.some(m => String(m.id) === String(msg.id))) return prev;
                     return [...prev, msg];
                 });
                 scrollToBottom();
-            } else if (selectedContact?.id === contact_id) {
+            } else if (selectedContactRef.current === contact_id) {
+                console.log('📨 Updating active chat (contact_id match)');
                 setMessages(prev => {
                     if (prev.some(m => String(m.id) === String(msg.id))) return prev;
                     return [...prev, msg];
@@ -169,54 +166,52 @@ const InboxPage: React.FC = () => {
             }
         };
 
-        const handleMessageUpdated = (msg: Message) => {
+        const handleMessageUpdated = (msg: any) => {
+            console.log('📨 SOCKET EVENT: message_updated', msg);
             setMessages(prev => prev.map(m => {
                 if (m.id === msg.id) {
-                    // Check content integrity
-                    const newContent = (msg.content !== undefined && msg.content !== null) ? msg.content : m.content;
-                    return { ...m, ...msg, content: newContent };
+                    return { ...m, ...msg };
                 }
                 return m;
             }));
         };
 
         const handleReconnect = () => {
-            console.log('Socket reconnected, refreshing data...');
+            console.log('🔄 Socket reconnected, refreshing data...');
             fetchContacts();
-            if (selectedContact) {
-                fetchMessages(selectedContact.id);
-            }
-            if (activeOrder?.main_id) {
-                socketRef.current?.emit('join_main', activeOrder.main_id);
-            }
-        };
-
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                if (socketRef.current && !socketRef.current.connected) {
-                    socketRef.current.connect();
-                }
+            if (selectedContactRef.current) {
+                fetchMessages(selectedContactRef.current);
             }
         };
 
         socketRef.current.on('new_message', handleNewMessage);
         socketRef.current.on('new_client_message', handleNewMessage);
         socketRef.current.on('message_updated', handleMessageUpdated);
+        socketRef.current.on('connect', handleReconnect);
 
         // Join active lead room
         if (activeOrder?.main_id) {
+            console.log('🔌 Joining room main_', activeOrder.main_id);
             socketRef.current.emit('join_main', activeOrder.main_id);
         }
 
+        // Join rooms for all currently loaded contacts
+        if (contacts.length > 0) {
+            console.log(`🔌 Joining ${contacts.length} contact rooms...`);
+            contacts.forEach(c => {
+                socketRef.current?.emit('join_contact', c.id);
+            });
+        }
+
         return () => {
-            socketRef.current?.off('contact_message', handleNewMessage);
+            console.log('🔌 Cleaning up socket listeners');
+            socketRef.current?.off('new_message', handleNewMessage);
+            socketRef.current?.off('new_client_message', handleNewMessage);
             socketRef.current?.off('message_updated', handleMessageUpdated);
             socketRef.current?.off('connect', handleReconnect);
-            socketRef.current?.io.off("reconnect", handleReconnect);
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedContact, activeOrder]);
+    }, [activeOrder]);
 
     // Handle URL param selection
     useEffect(() => {
@@ -261,6 +256,13 @@ const InboxPage: React.FC = () => {
             }
 
             setContacts(filteredContacts);
+
+            // Join rooms for all newly loaded contacts
+            if (socketRef.current) {
+                filteredContacts.forEach(c => {
+                    socketRef.current?.emit('join_contact', c.id);
+                });
+            }
         } catch (error) {
             console.error('Error fetching inbox contacts:', error);
         } finally {

@@ -156,8 +156,10 @@ class OrderMessagesService {
         });
 
         if (io) {
-            if (order.main_id) io.to(`main_${order.main_id}`).emit('new_message', savedMessage);
-            io.to(`order_${orderId}`).emit('new_client_message', savedMessage);
+            const messageWithContact = { ...savedMessage, contact_id: order.contact_id };
+            if (order.main_id) io.to(`main_${order.main_id}`).emit('new_message', messageWithContact);
+            io.to(`order_${orderId}`).emit('new_client_message', messageWithContact);
+            if (order.contact_id) io.to(`contact_${order.contact_id}`).emit('new_message', messageWithContact);
         }
 
         return savedMessage;
