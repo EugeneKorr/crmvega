@@ -36,7 +36,6 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { Order, ORDER_STATUSES, Contact, OrderStatus, Tag as TagData, Manager } from '../types';
 import { ordersAPI, contactsAPI, tagsAPI, managersAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { useSocket } from '../contexts/SocketContext';
 import { useOrders } from '../hooks/useOrders';
 import KanbanOrderCard from '../components/KanbanOrderCard';
 import MobileOrderList from '../components/MobileOrderList';

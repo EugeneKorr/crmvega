@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { message } from 'antd';
 import { ordersAPI } from '../services/api';
-import { useSocket } from '../contexts/SocketContext';
 import { Order, OrderStatus, ORDER_STATUSES } from '../types';
 
 interface UseOrdersProps {
@@ -12,7 +11,6 @@ interface UseOrdersProps {
 export const useOrders = ({ filters, visibleStatuses }: UseOrdersProps) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(false);
-    const { socket } = useSocket();
     const ordersRef = useRef(orders);
     ordersRef.current = orders;
 
@@ -74,64 +72,117 @@ export const useOrders = ({ filters, visibleStatuses }: UseOrdersProps) => {
         }
     }, [filters, visibleStatuses]);
 
-    // Socket Subscription
+    // Supabase Realtime Subscription
     useEffect(() => {
-        if (!socket) return;
+        // Dynamic import to avoid top-level dependency if possible
+        import('../lib/supabase').then(({ supabase }) => {
+            const channel = supabase
+                .channel('orders_updates')
+                .on(
+                    'postgres_changes',
+                    { event: 'INSERT', schema: 'public', table: 'orders' },
+                    async (payload) => {
+                        const newOrderRaw = payload.new as Order;
+                        // Fetch full order to get relations (contact, etc.)
+                        try {
+                            const fullOrder = await ordersAPI.getById(newOrderRaw.id);
 
-        const handleNewOrder = (newOrder: Order) => {
-            // Only add if status is visible
-            if (!visibleStatuses.includes(newOrder.status)) return;
+                            // Only add if status is visible
+                            if (!visibleStatuses.includes(fullOrder.status)) return;
 
-            setOrders(prev => {
-                if (prev.some(d => d.id === newOrder.id)) return prev;
-                return [newOrder, ...prev];
-            });
-        };
-
-        const handleOrderUpdated = (updatedOrder: Order) => {
-            // Logic: Merge with existing to preserve local fields (like tags, unread_count)
-            setOrders(prev => {
-                // If status changed to invisible, remove it
-                if (!visibleStatuses.includes(updatedOrder.status)) {
-                    return prev.filter(o => o.id !== updatedOrder.id);
-                }
-
-                const existing = prev.find(o => o.id === updatedOrder.id);
-                if (existing) {
-                    return prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder, contact: updatedOrder.contact || o.contact } : o);
-                } else {
-                    // If not found but should be visible (e.g. moved into view), add it
-                    // ideally we should fetch it fully, but for now add what we have
-                    return [updatedOrder, ...prev];
-                }
-            });
-        };
-
-        const handleOrderDeleted = ({ id }: { id: number }) => {
-            setOrders(prev => prev.filter(o => o.id !== id));
-            // Update cache
-            try {
-                const cached = localStorage.getItem(CACHE_KEY);
-                if (cached) {
-                    const parsed = JSON.parse(cached);
-                    if (parsed.data) {
-                        parsed.data = parsed.data.filter((o: Order) => o.id !== id);
-                        localStorage.setItem(CACHE_KEY, JSON.stringify(parsed));
+                            setOrders(prev => {
+                                if (prev.some(d => d.id === fullOrder.id)) return prev;
+                                const updated = [fullOrder, ...prev];
+                                // Update Cache
+                                try {
+                                    localStorage.setItem(CACHE_KEY, JSON.stringify({
+                                        data: updated,
+                                        timestamp: Date.now(),
+                                        statuses: visibleStatuses
+                                    }));
+                                } catch (e) { }
+                                return updated;
+                            });
+                        } catch (e) {
+                            console.error('Error fetching new order details', e);
+                        }
                     }
-                }
-            } catch (e) { }
-        };
+                )
+                .on(
+                    'postgres_changes',
+                    { event: 'UPDATE', schema: 'public', table: 'orders' },
+                    async (payload) => {
+                        const updatedOrderRaw = payload.new as Order;
+                        try {
+                            // Fetch full details
+                            const fullOrder = await ordersAPI.getById(updatedOrderRaw.id);
 
-        socket.on('new_order', handleNewOrder);
-        socket.on('order_updated', handleOrderUpdated);
-        socket.on('order_deleted', handleOrderDeleted);
+                            setOrders(prev => {
+                                // If status changed to invisible, remove it
+                                if (!visibleStatuses.includes(fullOrder.status)) {
+                                    const filtered = prev.filter(o => o.id !== fullOrder.id);
+                                    // Update Cache
+                                    try {
+                                        localStorage.setItem(CACHE_KEY, JSON.stringify({
+                                            data: filtered,
+                                            timestamp: Date.now(),
+                                            statuses: visibleStatuses
+                                        }));
+                                    } catch (e) { }
+                                    return filtered;
+                                }
 
-        return () => {
-            socket.off('new_order', handleNewOrder);
-            socket.off('order_updated', handleOrderUpdated);
-            socket.off('order_deleted', handleOrderDeleted);
-        };
-    }, [socket, visibleStatuses]);
+                                const existingIndex = prev.findIndex(o => o.id === fullOrder.id);
+                                let updatedList = [...prev];
+
+                                if (existingIndex !== -1) {
+                                    updatedList[existingIndex] = fullOrder;
+                                } else {
+                                    // If not found but visible, add it
+                                    updatedList = [fullOrder, ...prev];
+                                }
+
+                                // Update Cache
+                                try {
+                                    localStorage.setItem(CACHE_KEY, JSON.stringify({
+                                        data: updatedList,
+                                        timestamp: Date.now(),
+                                        statuses: visibleStatuses
+                                    }));
+                                } catch (e) { }
+                                return updatedList;
+                            });
+                        } catch (e) {
+                            console.error('Error fetching updated order details', e);
+                        }
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: 'DELETE', schema: 'public', table: 'orders' },
+                    (payload) => {
+                        const id = payload.old.id;
+                        setOrders(prev => {
+                            const filtered = prev.filter(o => o.id !== id);
+                            // Update cache
+                            try {
+                                localStorage.setItem(CACHE_KEY, JSON.stringify({
+                                    data: filtered,
+                                    timestamp: Date.now(),
+                                    statuses: visibleStatuses
+                                }));
+                            } catch (e) { }
+                            return filtered;
+                        });
+                    }
+                )
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
+        });
+    }, [visibleStatuses]);
 
     // Initial Fetch
     useEffect(() => {

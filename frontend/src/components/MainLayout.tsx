@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import io from 'socket.io-client';
-import { useSocket } from '../contexts/SocketContext';
 import { Layout, Menu, Avatar, Dropdown, Badge, Space, Drawer, Grid, notification } from 'antd';
 import {
   DashboardOutlined,
@@ -81,10 +79,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const selectedKeys = [selectedKey === '/' ? '/orders' : selectedKey];
 
   // Notifications Logic
-  // const socketRef = React.useRef<any>(null); // Removed local ref
-  const { socket } = useSocket(); // Use global socket
   const lastSoundTimeRef = React.useRef(0); // Debounce sound
   const [unreadTotal, setUnreadTotal] = useState(0);
+
+  // Imports for Supabase
+  const supabase = React.useMemo(() => {
+    // Lazy import or use global if available, but here we can just invoke it from lib if we import it.
+    // For now, assuming top-level import passed or we add it. 
+    // Actually, I need to add the import line at the top. 
+    // But since I am replacing a block, I will assume I can add the logic here.
+    // Wait, I need to add `import { supabase } from '../lib/supabase'` at the top.
+    // I will do that in a separate chunk.
+    return null;
+  }, []);
 
   const menuItems: MenuProps['items'] = [
     {
@@ -180,103 +187,108 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }, [fetchUnreadCount]);
 
   useEffect(() => {
-    // Restore count? maybe not needed persistent for session
     document.title = unreadTotal > 0 ? `(${unreadTotal}) CRM` : 'CRM';
   }, [unreadTotal]);
 
+  // Supabase Realtime Global Subscription
   useEffect(() => {
-    if (!socket) return;
+    if (!manager) return;
 
-    const handleGlobalMessage = (msg: any) => {
-      // Logic for alerts
-      if (!manager) return;
+    // Dynamic import to avoid top-level dependency if possible, or just use the global one.
+    // I will use module augmentation or just standard import in the next chunk.
+    // For this effect to work, I need 'supabase' instance.
+    // I'll assume 'supabase' is imported.
 
-      // 1. Read Settings locally (to be fresh)
-      let settings = { all_active: true, statuses: [] as string[] };
-      try {
-        const stored = localStorage.getItem(`crm_notification_settings_${manager.id}`);
-        if (stored) settings = JSON.parse(stored);
-      } catch (e) { console.error('Error parsing settings', e); }
+    import('../lib/supabase').then(({ supabase }) => {
+      const channel = supabase
+        .channel('global_notifications')
+        // 1. New Messages
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages' },
+          (payload: any) => {
+            const msg = payload.new;
+            // Check if message is from client
+            const isClient = msg.author_type === 'customer' || msg.author_type === 'client' || msg.author_type === 'Клиент';
+            // Check if unread (it should be true on insert usually)
+            if (isClient && !msg.is_read) {
 
-      // 2. Determine if we should notify
-      // Don't notify for own messages
-      const isClient = msg.author_type === 'Client' || msg.author_type === 'Клиент' || msg.author_type === 'client';
-      if (!isClient) return;
+              // Check settings
+              let settings = { all_active: true, statuses: [] as string[] };
+              try {
+                const stored = localStorage.getItem(`crm_notification_settings_${manager.id}`);
+                if (stored) settings = JSON.parse(stored);
+              } catch (e) { }
 
-      let shouldNotify = false;
+              let shouldNotify = false;
+              if (settings.statuses && settings.statuses.length > 0) {
+                if (msg.order_status && settings.statuses.includes(msg.order_status)) shouldNotify = true;
+              } else if (settings.all_active) {
+                shouldNotify = true;
+              }
 
-      // Priority 1: Status Filter
-      if (settings.statuses && settings.statuses.length > 0) {
-        if (settings.statuses.includes(msg.order_status)) {
-          shouldNotify = true;
-        }
-      }
-      // Priority 2: Global Switch
-      else {
-        if (settings.all_active) {
-          shouldNotify = true;
-        }
-      }
+              if (shouldNotify) {
+                // Debounce sound
+                const now = Date.now();
+                if (now - lastSoundTimeRef.current > 1000) {
+                  playAlertSound();
+                  lastSoundTimeRef.current = now;
+                }
+                notification.open({
+                  message: 'Новое сообщение',
+                  description: `От клиента.`,
+                  duration: 3,
+                  icon: <MessageOutlined style={{ color: '#1890ff' }} />,
+                  onClick: () => navigate('/inbox?filter=unread')
+                });
+              }
+            }
+            console.log('🔔 Realtime Message:', msg);
+            fetchUnreadCount();
+          }
+        )
+        // 2. New Orders
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'orders' },
+          (payload: any) => {
+            const order = payload.new;
+            playAlertSound();
+            notification.success({
+              message: 'Новая заявка!',
+              description: `Заявка #${order.id}. Статус: ${order.status}`,
+              duration: 5,
+              onClick: () => navigate(`/order/${order.main_id || order.id}`)
+            });
+            fetchUnreadCount();
+          }
+        )
+        // 3. Order Updates
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'orders' },
+          (payload: any) => {
+            const newOrder = payload.new;
+            const oldOrder = payload.old;
+            if (newOrder.status !== oldOrder.status) {
+              notification.info({
+                message: 'Статус заявки обновлен',
+                description: `Заявка #${newOrder.id}: ${oldOrder.status} -> ${newOrder.status}`,
+                duration: 3,
+                onClick: () => navigate(`/order/${newOrder.main_id || newOrder.id}`)
+              });
+            }
+            fetchUnreadCount();
+          }
+        )
+        .subscribe();
 
-      // 3. Play Sound & Show Toast
-      if (shouldNotify) {
-        // Debounce sound: prevent playing twice within 500ms for same event
-        const now = Date.now();
-        if (now - lastSoundTimeRef.current > 500) {
-          playAlertSound();
-          lastSoundTimeRef.current = now;
-        }
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    });
 
-        notification.open({
-          message: 'Новое сообщение',
-          description: `От клиента. Статус: ${msg.order_status || '?'}.`,
-          duration: 3,
-        });
-      }
-
-      // Always Refresh count from DB to be accurate
-      fetchUnreadCount();
-    };
-
-    socket.on('new_message_global', handleGlobalMessage);
-
-    const handleNewOrder = (order: any) => {
-      console.log('📨 SOCKET EVENT: new_order', order);
-      playAlertSound();
-      notification.success({
-        message: 'Новая заявка!',
-        description: `Заявка от ${order.contact?.name || 'клиента'}. Статус: ${order.status}`,
-        duration: 5,
-        onClick: () => navigate(`/order/${order.main_id || order.id}`)
-      });
-      fetchUnreadCount();
-    };
-
-    const handleOrderUpdated = (order: any) => {
-      console.log('📨 SOCKET EVENT: order_updated', order);
-      notification.info({
-        message: 'Заявка обновлена',
-        description: `Заявка #${order.id} теперь в статусе ${order.status}`,
-        duration: 3,
-      });
-      fetchUnreadCount();
-    };
-
-    const handleReadMessage = () => {
-      fetchUnreadCount();
-    };
-
-    socket.on('new_order', handleNewOrder);
-    socket.on('order_updated', handleOrderUpdated);
-    socket.on('messages_read', handleReadMessage);
-
-    return () => {
-      socket.off('new_message_global', handleGlobalMessage);
-      socket.off('new_order', handleNewOrder);
-      socket.off('order_updated', handleOrderUpdated);
-      socket.off('messages_read', handleReadMessage);
-    };
-  }, [socket, manager, fetchUnreadCount]);
+  }, [manager, fetchUnreadCount]);
 
   const MenuContent = (
     <>
