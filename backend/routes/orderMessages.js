@@ -656,6 +656,8 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
         if (caption && caption.trim().startsWith('{')) {
           try {
             const parsed = JSON.parse(caption);
+            console.log('[OrderMessages File] 📋 Parsed caption JSON:', JSON.stringify(parsed, null, 2));
+
             if (parsed.text || parsed.buttons) {
               captionText = parsed.text || '';
 
@@ -663,10 +665,14 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
               const urlButtons = parsed.buttons?.filter(b => b.type === 'url') || [];
               const actionButtons = parsed.buttons?.filter(b => b.type !== 'url') || [];
 
+              console.log('[OrderMessages File] 🔗 URL Buttons found:', urlButtons.length, JSON.stringify(urlButtons));
+              console.log('[OrderMessages File] ⚡ Action Buttons found:', actionButtons.length, JSON.stringify(actionButtons));
+
               // 1. Handle URL Buttons (Always Inline)
               if (urlButtons.length > 0) {
                 const inlineKeyboard = urlButtons.map(b => ({ text: b.text, url: b.url }));
                 replyMarkup = { inline_keyboard: inlineKeyboard.map(b => [b]) };
+                console.log('[OrderMessages File] ✅ Created Inline Keyboard:', JSON.stringify(replyMarkup));
               }
 
               // 2. Handle Action Buttons (Always Reply Keyboard for Bubble)
@@ -683,8 +689,10 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
                   // Отправим action кнопки отдельным сообщением после файла
                   // Сохраняем для использования ниже
                   var secondaryActionMarkup = actionMarkup;
+                  console.log('[OrderMessages File] 📤 Will send Action buttons in secondary message');
                 } else {
                   replyMarkup = actionMarkup;
+                  console.log('[OrderMessages File] ✅ Created Reply Keyboard:', JSON.stringify(replyMarkup));
                 }
               }
             }
@@ -724,6 +732,9 @@ router.post('/:orderId/client/file', auth, upload.single('file'), async (req, re
 
         if (replyMarkup) {
           formData.append('reply_markup', JSON.stringify(replyMarkup));
+          console.log('[OrderMessages File] 📨 Sending with reply_markup:', JSON.stringify(replyMarkup));
+        } else {
+          console.log('[OrderMessages File] ⚠️ No reply_markup to send');
         }
 
         const response = await axios.post(
