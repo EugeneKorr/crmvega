@@ -260,15 +260,18 @@ const InboxPage: React.FC = () => {
     // const [isMobile, setIsMobile] = useState(window.innerWidth < 768); 
     // replacing the above with derived value
 
-    useEffect(() => {
-        // No manual resize listener needed
-    }, []);
-
-    const scrollToBottom = () => {
+    const scrollToBottom = (instant = false) => {
         setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth' });
         }, 100);
     };
+
+    // Auto-scroll to bottom when messages load or new message arrives
+    useEffect(() => {
+        if (messages.length > 0 && !isLoadingMessages) {
+            scrollToBottom(true);
+        }
+    }, [messages.length, isLoadingMessages]);
 
     const showList = !isMobile || (isMobile && !selectedContact);
     const showChat = !isMobile || (isMobile && selectedContact);

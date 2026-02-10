@@ -58,6 +58,9 @@ class OrderMessagesService {
 
         if (orderError) throw orderError;
 
+        let messageStatus = 'delivered';
+        let errorMessage = null;
+
         let telegramUserId = null;
         if (order.contact_id) {
             const { data: contact } = await supabase
