@@ -24,6 +24,7 @@ import {
     ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { UnifiedMessageBubble } from '../components/UnifiedMessageBubble';
+import { UnifiedContactChat } from '../components/UnifiedContactChat';
 import { ChatInput } from '../components/ChatInput';
 import { formatDate, formatTime, isClientMessage } from '../utils/chatUtils';
 import { useOrderChat } from '../hooks/useOrderChat';
@@ -644,73 +645,11 @@ const InboxPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Messages Area */}
-                            <div
-                                ref={messagesContainerRef}
-                                onScroll={handleScroll}
-                                style={{
-                                    flex: 1,
-                                    padding: isMobile ? '12px' : '24px',
-                                    overflowY: 'auto',
-                                    background: '#f5f5f5',
-                                    backgroundImage: 'url("https://gw.alipayobjects.com/zos/rmsportal/FfdJeJRQWjEeGTpqgBKj.png")', // Subtle pattern
-                                    backgroundBlendMode: 'overlay',
-                                }}>
-                                {isLoadingMessages ? (
-                                    <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
-                                ) : (
-                                    <>
-                                        {loadingMore && (
-                                            <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                                                <Spin size="small" />
-                                            </div>
-                                        )}
-                                        {messages.length === 0 ? (
-                                            <Empty description="История сообщений пуста" style={{ marginTop: 60 }} />
-                                        ) : (
-                                            (() => {
-                                                const groupedMessages: { date: string, msgs: Message[] }[] = [];
-                                                messages.forEach(msg => {
-                                                    const dateKey = formatDate(msg['Created Date'] || msg.created_at);
-                                                    const lastGroup = groupedMessages[groupedMessages.length - 1];
-                                                    if (lastGroup && lastGroup.date === dateKey) {
-                                                        lastGroup.msgs.push(msg);
-                                                    } else {
-                                                        groupedMessages.push({ date: dateKey, msgs: [msg] });
-                                                    }
-                                                });
-
-                                                return groupedMessages.map(group => (
-                                                    <div key={group.date}>
-                                                        <div style={{ textAlign: 'center', margin: '24px 0 16px', opacity: 0.5, fontSize: 12 }}>
-                                                            <span style={{ background: '#e0e0e0', padding: '4px 12px', borderRadius: 12 }}>{group.date}</span>
-                                                        </div>
-                                                        {group.msgs.map(msg => {
-                                                            const isOwn = !isClientMessage(msg.author_type);
-                                                            return (
-                                                                <UnifiedMessageBubble
-                                                                    key={msg.id}
-                                                                    msg={msg}
-                                                                    isOwn={isOwn}
-                                                                    onAddReaction={handleAddReaction}
-                                                                // Reply logic can be added here if we implement onReply/replyTo state
-                                                                />
-                                                            );
-                                                        })}
-                                                    </div>
-                                                ));
-                                            })()
-                                        )}
-                                    </>
-                                )}
-                                <div ref={messagesEndRef} />
-                            </div>
-
-                            <ChatInput
-                                onSendText={handleSendMessage}
-                                onSendVoice={handleSendVoice}
-                                onSendFile={handleSendFile}
-                                sending={sending}
+                            {/* Chat Area - Using Unified Component */}
+                            <UnifiedContactChat
+                                contactId={selectedContact.id}
+                                activeOrder={activeOrder}
+                                isMobile={isMobile}
                             />
                         </>
                     ) : (
