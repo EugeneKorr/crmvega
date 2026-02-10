@@ -472,12 +472,31 @@ const OrdersPage: React.FC = () => {
       setOrders(prev => prev.map(d => d.id === updatedOrder.id ? { ...updatedOrder, contact: d.contact } : d));
     };
 
+    const handleOrderDeleted = ({ id }: { id: number }) => {
+      setOrders(prev => prev.filter(o => o.id !== id));
+      // Also update cache if possible
+      try {
+        const cached = localStorage.getItem('crm_orders_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.data) {
+            parsed.data = parsed.data.filter((o: Order) => o.id !== id);
+            localStorage.setItem('crm_orders_cache', JSON.stringify(parsed));
+          }
+        }
+      } catch (e) {
+        console.error('Error updating cache on delete:', e);
+      }
+    };
+
     socket.on('new_order', handleNewOrder);
     socket.on('order_updated', handleOrderUpdated);
+    socket.on('order_deleted', handleOrderDeleted);
 
     return () => {
       socket.off('new_order', handleNewOrder);
       socket.off('order_updated', handleOrderUpdated);
+      socket.off('order_deleted', handleOrderDeleted);
     };
   }, [socket, visibleStatuses]);
 

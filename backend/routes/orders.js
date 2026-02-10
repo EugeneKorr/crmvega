@@ -340,10 +340,20 @@ router.get('/:id', auth, async (req, res) => {
       `);
 
     // Optimized Lookup Logic: Strict Main ID lookup only
+    // Optimized Lookup Logic: Support both internal id and main_id
     const numericId = parseInt(id);
+    let lookupField = 'id';
+    let lookupValue = numericId;
 
-    // Strict lookup by main_id ONLY
-    query = query.eq('main_id', numericId);
+    // If ID looks like a main_id (large number), use main_id
+    // Otherwise use id (primary key)
+    if (numericId > 1000000000) {
+      lookupField = 'main_id';
+      lookupValue = numericId;
+    }
+
+    // Dynamic lookup
+    query = query.eq(lookupField, lookupValue);
 
     let { data, error } = await query.maybeSingle();
 
@@ -711,6 +721,12 @@ router.delete('/:id', auth, async (req, res) => {
 
     // Сбрасываем кэш ордеров
     clearCache('orders');
+
+    // Получаем io для уведомлений
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('order_deleted', { id: parseInt(id) });
+    }
 
     res.json({ success: true });
   } catch (error) {
