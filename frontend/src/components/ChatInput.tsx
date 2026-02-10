@@ -244,17 +244,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         // If file exists, send file with text as caption
         if (selectedFile && onSendFile) {
             try {
-                // If buttons exist, we might just append them as JSON text? 
-                // Currently sendFile API handles text as caption. 
-                // Backend might not parse JSON in caption. 
-                // Let's assume buttons are mostly for text messages for now.
-                // Or try to wrap:
+                // Если есть кнопки из шаблона, упаковываем caption в JSON
                 let caption = messageInput.trim();
                 if (templateButtons.length > 0) {
-                    // For file caption, probably keep it simple or user didn't ask for buttons on images specifically
-                    // But to be consistent:
-                    // caption = JSON.stringify({ text: caption, buttons: templateButtons });
-                    // Let's skip buttons for file/image uploads for safety unless requested
+                    // Упаковываем текст и кнопки в JSON для бэкенда
+                    caption = JSON.stringify({ text: caption, buttons: templateButtons });
                 }
 
                 await onSendFile(selectedFile, caption || undefined);
