@@ -244,7 +244,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
     };
 
     const { text: rawText, buttons: displayButtons } = msg.content ? parseContent(msg.content) : { text: '', buttons: [] };
-    const displayText = rawText;
+    const displayText = !['📎 Файл', '📷 Изображение', '🎤 Голосовое сообщение'].includes(rawText?.trim()) ? rawText : '';
 
     return (
         <div className="message-bubble-container" style={{
@@ -279,7 +279,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps> = ({
                     <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
                         {!isFromClient && (
                             <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
-                                {msg.sender?.name || msg.user || (isOwn ? 'Вы' : 'Оператор')}
+                                {msg.sender?.name || msg.user || 'Оператор'}
                             </div>
                         )}
 

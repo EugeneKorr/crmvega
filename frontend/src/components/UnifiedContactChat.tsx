@@ -182,7 +182,8 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             manager_id: manager.id,
             status: 'pending' as any,
             reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id
+            reply_to_id: replyTo?.id,
+            sender: manager
         };
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
@@ -215,7 +216,8 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             voice_duration: duration,
             attachment_url_internal: URL.createObjectURL(voice),
             reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id
+            reply_to_id: replyTo?.id,
+            sender: manager || undefined
         };
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
@@ -247,7 +249,8 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
             status: 'pending' as any,
             attachment_url_internal: URL.createObjectURL(file), // Support image preview instantly
             reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id
+            reply_to_id: replyTo?.id,
+            sender: manager || undefined
         };
         setMessages(prev => [...prev, optimisticMessage]);
         scrollToBottom();
