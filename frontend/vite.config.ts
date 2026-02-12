@@ -19,8 +19,8 @@ export default defineConfig({
                     'vendor-antd': ['antd'],
                     // DnD libraries
                     'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable'],
-                    // Socket.io
-                    'vendor-socket': ['socket.io-client'],
+                    // Socket.io - REMOVED because it's not a direct dependency and caused build errors
+                    // 'vendor-socket': ['socket.io-client'],
                 },
             },
         },
