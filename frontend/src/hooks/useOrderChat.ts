@@ -187,51 +187,46 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     useEffect(() => {
         if (!orderId) return;
 
-        // Fetch user cache helper
-        const fetchSenderIfNeeded = async (managerId?: number | string): Promise<any> => {
-            if (!managerId) return null;
-            // Simple approach: You could cache managers in a context or store. 
-            // For now, we assume manager info comes with initial load, 
-            // but for realtime events we might miss it.
-            // If sender is current user, we have it.
-            if (String(managerId) === String(manager?.id)) return manager;
-            return null; // or fetch user API?
-        };
-
         const handleNewMessage = (msg: TimelineMessage) => {
             setMessages(prev => {
                 // Deduplication
-                if (prev.some(m => m.id === msg.id && m.source_type === msg.source_type)) return prev;
+                const msgUniqueId = msg.id + '_' + (msg.source_type || 'c');
+                if (prev.some(m => (m.id + '_' + (m.source_type || 'c')) === msgUniqueId)) return prev;
 
                 // If it's our own message coming back, remove the pending one match by content usually
-                // But simplified: 
                 const filtered = prev.filter(m => !(m.isPending && m.content === msg.content && m.source_type === msg.source_type));
-                return [...filtered, msg];
+
+                // Sort by date to maintain order
+                const newList = [...filtered, msg].sort((a, b) => {
+                    const dateA = new Date(a.sort_date || a.created_at || a['Created Date'] || 0).getTime();
+                    const dateB = new Date(b.sort_date || b.created_at || b['Created Date'] || 0).getTime();
+                    return dateA - dateB;
+                });
+                return newList;
             });
         };
 
-        const channel = supabase.channel(`order_timeline:${orderId}`)
-            // 1. Client Messages (table: messages)
-            .on(
-                'postgres_changes',
-                {
+        let channel: any;
+
+        const setup = async () => {
+            let internalIdForSub = String(orderId);
+
+            // If orderId seems to be a main_id (long number), resolve numeric id
+            if (Number(orderId) > 1000000000) {
+                const { data } = await supabase.from('orders').select('id').eq('main_id', orderId).maybeSingle();
+                if (data?.id) internalIdForSub = String(data.id);
+            }
+
+            channel = supabase.channel(`order_timeline:${orderId}`)
+                .on('postgres_changes', {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'messages',
                     filter: mainId ? `main_id=eq.${mainId}` : undefined
-                },
-                async (payload: RealtimePostgresInsertPayload<Message>) => {
+                }, (payload: any) => {
                     const newMsg = payload.new;
-                    // Need to map to TimelineMessage
-                    // Note: payload.new does NOT include joins (sender).
-                    // We might need to fetch the full message or approximate.
-                    // For now, let's try to construct it.
-
-                    // IMPORTANT: If author_type is manager, we need sender.
-                    // If we are the sender, we know who we are.
                     const isOwn = String(newMsg.manager_id) === String(manager?.id);
-                    const sender = isOwn ? manager : undefined; // We miss other managers info here without fetch!
-
+                    const sender = isOwn ? manager : undefined;
                     const timelineMsg: TimelineMessage = {
                         ...newMsg,
                         source_type: 'client',
@@ -240,22 +235,16 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                         sender: sender || undefined
                     };
                     handleNewMessage(timelineMsg);
-                }
-            )
-            // 2. Internal Messages (table: internal_messages)
-            .on(
-                'postgres_changes',
-                {
+                })
+                .on('postgres_changes', {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'internal_messages',
-                    filter: `order_id=eq.${orderId}`
-                },
-                (payload: RealtimePostgresInsertPayload<any>) => {
+                    filter: mainId ? `main_id=eq.${mainId}` : `order_id=eq.${internalIdForSub}`
+                }, (payload: any) => {
                     const newMsg = payload.new;
                     const isOwn = String(newMsg.sender_id) === String(manager?.id);
                     const sender = isOwn ? manager : undefined;
-
                     const timelineMsg: TimelineMessage = {
                         ...newMsg,
                         source_type: 'internal',
@@ -267,30 +256,27 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                         message_type: newMsg.attachment_type === 'system' ? 'system' : 'text'
                     };
                     handleNewMessage(timelineMsg);
-                }
-            )
-            // 3. Updates (e.g. reactions, is_read)
-            .on(
-                'postgres_changes',
-                {
+                })
+                .on('postgres_changes', {
                     event: 'UPDATE',
                     schema: 'public',
                     table: 'messages',
                     filter: mainId ? `main_id=eq.${mainId}` : undefined
-                },
-                (payload: RealtimePostgresUpdatePayload<Message>) => {
+                }, (payload: any) => {
                     const updated = payload.new;
                     setMessages(prev => prev.map(m =>
                         (String(m.id) === String(updated.id) && m.source_type === 'client')
                             ? { ...m, ...updated, content: updated.content || m.content }
                             : m
                     ));
-                }
-            )
-            .subscribe();
+                })
+                .subscribe();
+        };
+
+        setup();
 
         return () => {
-            supabase.removeChannel(channel);
+            if (channel) supabase.removeChannel(channel);
         };
     }, [orderId, mainId, manager]);
 

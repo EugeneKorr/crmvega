@@ -436,7 +436,7 @@ class OrdersService {
             const managerName = manager.name || manager.email;
             const timestamp = new Date().toLocaleString('ru-RU');
             const systemContent = `✨ ${managerName} создал заявку ${timestamp}`;
-            await this._createSystemMessage(data.id, manager.id, systemContent);
+            await this._createSystemMessage(data.id, data.main_id, manager.id, systemContent);
 
         } catch (e) {
             console.error('Creation side effects error:', e);
@@ -454,10 +454,10 @@ class OrdersService {
 
         // Other fields (System Messages)
         if (updateData.SumInput !== undefined && parseFloat(updateData.SumInput) !== parseFloat(oldOrder.SumInput || 0)) {
-            await this._createSystemMessage(data.id, manager.id, `💰 ${managerName} изменил сумму: ${updateData.SumInput} (было: ${oldOrder.SumInput || 0})`);
+            await this._createSystemMessage(data.id, data.main_id, manager.id, `💰 ${managerName} изменил сумму: ${updateData.SumInput} (было: ${oldOrder.SumInput || 0})`);
         }
         if (updateData.CurrPair1 && updateData.CurrPair1 !== oldOrder.CurrPair1) {
-            await this._createSystemMessage(data.id, manager.id, `💱 ${managerName} изменил валюту отдачи: ${updateData.CurrPair1} (было: ${oldOrder.CurrPair1 || '-'})`);
+            await this._createSystemMessage(data.id, data.main_id, manager.id, `💱 ${managerName} изменил валюту отдачи: ${updateData.CurrPair1} (было: ${oldOrder.CurrPair1 || '-'})`);
         }
     }
 
@@ -466,7 +466,7 @@ class OrdersService {
         const newLabel = ORDER_STATUSES[newOrder.status]?.label || newOrder.status;
         const managerName = manager.name || manager.email;
 
-        await this._createSystemMessage(newOrder.id, manager.id, `🔄 ${managerName} смена этапа: ${newLabel} (было: ${oldLabel})`);
+        await this._createSystemMessage(newOrder.id, newOrder.main_id, manager.id, `🔄 ${managerName} смена этапа: ${newLabel} (было: ${oldLabel})`);
 
         runAutomations('order_status_changed', newOrder).catch(console.error);
 
@@ -479,9 +479,10 @@ class OrdersService {
         }
     }
 
-    async _createSystemMessage(orderId: number | string, managerId: number | string, content: string) {
+    async _createSystemMessage(orderId: number | string, mainId: number | string | null, managerId: number | string, content: string) {
         await supabase.from('internal_messages').insert({
             order_id: orderId,
+            main_id: mainId,
             sender_id: managerId,
             content,
             is_read: false,

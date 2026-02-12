@@ -45,9 +45,9 @@ class OrderMessagesService {
         return order || null;
     }
 
-    private async getAllRelatedLeadIds(orderId: string | number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null }> {
+    private async getAllRelatedLeadIds(orderId: string | number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null, currentMainId: string | null }> {
         const order = await this.resolveOrderId(orderId);
-        if (!order) return { leadIds: [], contactId: null, internalId: null };
+        if (!order) return { leadIds: [], contactId: null, internalId: null, currentMainId: null };
 
         const leadIds = new Set<string>();
         if (order.main_id) leadIds.add(String(order.main_id));
@@ -70,7 +70,8 @@ class OrderMessagesService {
         return {
             leadIds: Array.from(leadIds),
             contactId: order.contact_id || null,
-            internalId: order.id
+            internalId: order.id,
+            currentMainId: order.main_id ? String(order.main_id) : null
         };
     }
 
@@ -524,7 +525,7 @@ class OrderMessagesService {
     }
 
     async getTimeline(orderId: string | number, limit = 50, before: string | null = null) {
-        const { leadIds, internalId } = await this.getAllRelatedLeadIds(orderId);
+        const { leadIds, internalId, currentMainId } = await this.getAllRelatedLeadIds(orderId);
         if (!internalId) return { messages: [], meta: { total_fetched: 0, limit, has_more: false } };
 
         // Fetch Client Messages
@@ -548,7 +549,7 @@ class OrderMessagesService {
         let internalQuery = supabase
             .from('internal_messages')
             .select('*')
-            .eq('order_id', internalId) // Use internal numeric ID
+            .eq(currentMainId ? 'main_id' : 'order_id', currentMainId || internalId)
             .order('created_at', { ascending: false })
             .limit(limit);
         if (before) internalQuery = internalQuery.lt('created_at', before);
@@ -564,7 +565,6 @@ class OrderMessagesService {
                 sort_date: m['Created Date'] || m.created_at
             })),
             ...(internalMsgs || [])
-                .filter((m: any) => m.order_id === internalId) // All internal (notes & system) stay in their order
                 .map((m: any) => ({
                     ...m,
                     source_type: 'internal',
