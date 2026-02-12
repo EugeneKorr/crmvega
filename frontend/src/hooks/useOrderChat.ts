@@ -264,7 +264,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                         display_author: (sender?.name || 'Система'),
                         author_type: 'manager',
                         sender: sender || undefined,
-                        message_type: 'text' // default
+                        message_type: newMsg.attachment_type === 'system' ? 'system' : 'text'
                     };
                     handleNewMessage(timelineMsg);
                 }

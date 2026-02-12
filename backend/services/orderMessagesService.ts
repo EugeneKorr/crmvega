@@ -570,7 +570,7 @@ class OrderMessagesService {
                     source_type: 'internal',
                     date: m.created_at,
                     sort_date: m.created_at,
-                    message_type: 'text',
+                    message_type: m.attachment_type === 'system' ? 'system' : 'text',
                     is_system: m.attachment_type === 'system'
                 }))
         ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
