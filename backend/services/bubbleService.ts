@@ -420,10 +420,15 @@ class BubbleService {
     // --- Notes ---
     async processNoteToUser(user: any, note: string) {
         let contactId = null;
+        let contactManagerId = null;
         const cleanDigits = String(user).replace(/\D/g, '');
+
         if (cleanDigits.length >= 5) {
-            const { data } = await supabase.from('contacts').select('id').eq('telegram_user_id', cleanDigits).maybeSingle();
-            if (data) contactId = data.id;
+            const { data } = await supabase.from('contacts').select('id, manager_id').eq('telegram_user_id', cleanDigits).maybeSingle();
+            if (data) {
+                contactId = data.id;
+                contactManagerId = data.manager_id;
+            }
         }
 
         if (!contactId && String(user).length > 15) {
@@ -432,8 +437,11 @@ class BubbleService {
                     headers: { Authorization: `Bearer ${process.env.BUBBLE_API_TOKEN || 'b897577858b2a032515db52f77e15e38'}` }
                 });
                 if (userRes.data?.response?.TelegramID) {
-                    const { data } = await supabase.from('contacts').select('id').eq('telegram_user_id', userRes.data.response.TelegramID).maybeSingle();
-                    if (data) contactId = data.id;
+                    const { data } = await supabase.from('contacts').select('id, manager_id').eq('telegram_user_id', userRes.data.response.TelegramID).maybeSingle();
+                    if (data) {
+                        contactId = data.id;
+                        contactManagerId = data.manager_id;
+                    }
                 }
             } catch (e) { }
         }
@@ -444,10 +452,17 @@ class BubbleService {
         const systemContent = `📝 Заметка: ${note} ${new Date().toLocaleString('ru-RU')}`;
         const createdMessages: any[] = [];
 
+        // System manager fallback
+        const finalManagerId = contactManagerId || 3;
+
         if (orders) {
             for (const order of orders) {
                 const { data: sysMsg } = await supabase.from('internal_messages').insert({
-                    order_id: order.id, content: systemContent, is_read: false, attachment_type: 'system'
+                    order_id: order.id,
+                    content: systemContent,
+                    is_read: false,
+                    attachment_type: 'system',
+                    sender_id: finalManagerId
                 }).select().single();
                 if (sysMsg) {
                     createdMessages.push(sysMsg);
@@ -455,20 +470,37 @@ class BubbleService {
             }
         }
 
-        const { data: noteData } = await supabase.from('notes').insert({
-            contact_id: contactId, content: note, priority: 'info'
+        const { data: noteData, error: noteError } = await supabase.from('notes').insert({
+            contact_id: contactId,
+            content: note,
+            priority: 'info',
+            manager_id: finalManagerId
         }).select().single();
+
+        if (noteError) {
+            console.error('[Bubble Service] Note create error:', noteError);
+        }
 
         return { contact_id: contactId, messages_created: createdMessages.length, note_created: !!noteData };
     }
 
     async processNoteToOrder(main_id: any, note: string) {
-        const { data: order } = await supabase.from('orders').select('id').eq('main_id', main_id).maybeSingle();
+        const { data: order } = await supabase.from('orders')
+            .select('id, manager_id')
+            .eq('main_id', main_id)
+            .maybeSingle();
+
         if (!order) throw new Error('Order not found');
 
         const systemContent = `📝 Заметка: ${note} ${new Date().toLocaleString('ru-RU')}`;
+        const finalManagerId = order.manager_id || 3;
+
         const { data: sysMsg, error } = await supabase.from('internal_messages').insert({
-            order_id: order.id, content: systemContent, is_read: false, attachment_type: 'system'
+            order_id: order.id,
+            content: systemContent,
+            is_read: false,
+            attachment_type: 'system',
+            sender_id: finalManagerId
         }).select().single();
 
         if (error) throw error;

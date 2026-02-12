@@ -82,27 +82,29 @@ class BubbleController {
 
     async noteToUser(req: Request, res: Response) {
         try {
-            const { user, note } = req.body;
-            if (!user || !note) return res.status(400).json({ success: false, error: 'Missing user/note' });
+            const { user, user_id, note } = req.body;
+            const finalUser = user || user_id;
+            if (!finalUser || !note) return res.status(400).json({ success: false, error: 'Missing user/note' });
 
-            const result = await bubbleService.processNoteToUser(user, note);
+            const result = await bubbleService.processNoteToUser(finalUser, note);
             res.json({ success: true, ...result });
         } catch (error: any) {
             console.error('[Bubble Webhook] Error in note_to_user:', error);
-            res.status(500).json({ success: false, error: error.message });
+            res.status(error.message === 'Contact not found' ? 404 : 500).json({ success: false, error: error.message });
         }
     }
 
     async noteToOrder(req: Request, res: Response) {
         try {
-            const { main_id, note } = req.body;
-            if (!main_id || !note) return res.status(400).json({ success: false, error: 'Missing main_id/note' });
+            const { main_id, main_ID, note } = req.body;
+            const finalMainId = main_id || main_ID;
+            if (!finalMainId || !note) return res.status(400).json({ success: false, error: 'Missing main_id/note' });
 
-            const result = await bubbleService.processNoteToOrder(main_id, note);
+            const result = await bubbleService.processNoteToOrder(finalMainId, note);
             res.json({ success: true, ...result });
         } catch (error: any) {
             console.error('[Bubble Webhook] Error in note_to_order:', error);
-            res.status(500).json({ success: false, error: error.message });
+            res.status(error.message === 'Order not found' ? 404 : 500).json({ success: false, error: error.message });
         }
     }
 }
