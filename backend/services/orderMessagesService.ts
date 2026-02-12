@@ -45,18 +45,21 @@ class OrderMessagesService {
         return order || null;
     }
 
-    private async getAllRelatedLeadIds(orderId: string | number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null, currentMainId: string | null }> {
-        const order = await this.resolveOrderId(orderId);
-        if (!order) return { leadIds: [], contactId: null, internalId: null, currentMainId: null };
+    private async getAllRelatedLeadIds(orderId?: string | number, contactId?: number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null, currentMainId: string | null, allRelatedOrderIds: number[] }> {
+        let order = orderId ? await this.resolveOrderId(orderId) : null;
+        let effectiveContactId = contactId || order?.contact_id || null;
 
         const leadIds = new Set<string>();
-        if (order.main_id) leadIds.add(String(order.main_id));
+        const allRelatedOrderIds: number[] = [];
 
-        if (order.contact_id) {
+        if (order?.main_id) leadIds.add(String(order.main_id));
+        if (order?.id) allRelatedOrderIds.push(order.id);
+
+        if (effectiveContactId) {
             const { data: contact } = await supabase
                 .from('contacts')
-                .select('id, telegram_user_id, orders(main_id)')
-                .eq('id', order.contact_id)
+                .select('id, telegram_user_id, orders(id, main_id)')
+                .eq('id', effectiveContactId)
                 .single();
 
             if (contact) {
@@ -64,14 +67,16 @@ class OrderMessagesService {
                 const otherOrders = (contact as any).orders || [];
                 otherOrders.forEach((o: any) => {
                     if (o.main_id) leadIds.add(String(o.main_id));
+                    if (o.id) allRelatedOrderIds.push(o.id);
                 });
             }
         }
         return {
             leadIds: Array.from(leadIds),
-            contactId: order.contact_id || null,
-            internalId: order.id,
-            currentMainId: order.main_id ? String(order.main_id) : null
+            contactId: effectiveContactId || null,
+            internalId: order?.id || null,
+            currentMainId: order?.main_id ? String(order.main_id) : null,
+            allRelatedOrderIds: Array.from(new Set(allRelatedOrderIds))
         };
     }
 
@@ -524,9 +529,9 @@ class OrderMessagesService {
         return count || 0;
     }
 
-    async getTimeline(orderId: string | number, limit = 50, before: string | null = null) {
-        const { leadIds, internalId, currentMainId } = await this.getAllRelatedLeadIds(orderId);
-        if (!internalId) return { messages: [], meta: { total_fetched: 0, limit, has_more: false } };
+    async getTimeline(params: { orderId?: string | number, contactId?: number }, limit = 50, before: string | null = null) {
+        const { leadIds, internalId, currentMainId, allRelatedOrderIds } = await this.getAllRelatedLeadIds(params.orderId, params.contactId);
+        if (leadIds.length === 0 && allRelatedOrderIds.length === 0) return { messages: [], meta: { total_fetched: 0, limit, has_more: false } };
 
         // Fetch Client Messages
         let clientQuery = supabase
@@ -549,9 +554,18 @@ class OrderMessagesService {
         let internalQuery = supabase
             .from('internal_messages')
             .select('*')
-            .eq(currentMainId ? 'main_id' : 'order_id', currentMainId || internalId)
             .order('created_at', { ascending: false })
             .limit(limit);
+
+        if (currentMainId || allRelatedOrderIds.length > 0) {
+            const filters = [];
+            if (currentMainId) filters.push(`main_id.eq.${currentMainId}`);
+            if (allRelatedOrderIds.length > 0) filters.push(...allRelatedOrderIds.map(id => `order_id.eq.${id}`));
+            internalQuery = internalQuery.or(filters.join(','));
+        } else {
+            internalQuery = internalQuery.eq('id', -1);
+        }
+
         if (before) internalQuery = internalQuery.lt('created_at', before);
 
         const { data: internalMsgs } = await internalQuery;

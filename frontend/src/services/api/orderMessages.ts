@@ -109,7 +109,7 @@ export const orderMessagesAPI = {
         return response.data;
     },
 
-    getTimeline: async (orderId: number, params?: { limit?: number; before?: string }): Promise<{
+    getTimeline: async (orderId: number, params?: { limit?: number; before?: string; contactId?: number }): Promise<{
         messages: (Message | InternalMessage)[];
         meta: {
             total_fetched: number;

@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Spin, Empty, message as antMessage } from 'antd';
-import { LoadingOutlined } from '@ant-design/icons';
+import { Spin, Empty, Switch, Tooltip } from 'antd';
+import { TeamOutlined, GlobalOutlined, LoadingOutlined } from '@ant-design/icons';
 import { Message, Order } from '../types';
-import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { UnifiedMessageBubble } from './UnifiedMessageBubble';
 import { ChatInput } from './ChatInput';
 import { formatDate, isClientMessage } from '../utils/chatUtils';
-import { contactMessagesAPI, orderMessagesAPI, messagesAPI } from '../services/api';
-import { supabase } from '../lib/supabase';
+import { useOrderChat } from '../hooks/useOrderChat';
 
 interface UnifiedContactChatProps {
     contactId: number;
@@ -17,6 +15,13 @@ interface UnifiedContactChatProps {
     showHeader?: boolean;
     contactName?: string;
     style?: React.CSSProperties;
+}
+
+interface TimelineMessage extends Message {
+    source_type?: 'client' | 'internal';
+    sort_date?: string;
+    is_system?: boolean;
+    display_author?: string;
 }
 
 export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
@@ -28,478 +33,182 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     style
 }) => {
     const { manager } = useAuth();
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [hasMore, setHasMore] = useState(true);
-    const [sending, setSending] = useState(false);
-    const [replyTo, setReplyTo] = useState<Message | null>(null);
-    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-    const [highlightedMsgId, setHighlightedMsgId] = useState<string | number | null>(null);
-    const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
-    const lastTypingSentRef = useRef<number>(0);
 
+    // Use the unified hook. If no activeOrder, we use the contactId to at least fetch client messages.
+    // Note: useOrderChat expects an orderId. We'll pass activeOrder?.id || 0 and handle it.
+    const {
+        messages,
+        loading,
+        loadingMore,
+        hasMore,
+        sending,
+        replyTo,
+        setReplyTo,
+        fetchTimeline,
+        sendMessage,
+        addReaction
+    } = useOrderChat(activeOrder?.id || 0, activeOrder?.main_id ? String(activeOrder.main_id) : undefined, contactId);
+
+    const [inputMode, setInputMode] = useState<'client' | 'internal'>('client');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const previousScrollHeightRef = useRef<number>(0);
-    const isInitialLoadRef = useRef<boolean>(true);
-    const isAutoScrollingRef = useRef<boolean>(false);
 
     const scrollToBottom = useCallback((smooth = false) => {
-        if (!messagesContainerRef.current) return;
-        isAutoScrollingRef.current = true;
-
-        const container = messagesContainerRef.current;
-        const targetScrollTop = container.scrollHeight - container.clientHeight;
-
-        if (smooth) {
-            container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-        } else {
-            container.scrollTop = targetScrollTop;
-        }
-
-        // Unlock after animation
         setTimeout(() => {
-            isAutoScrollingRef.current = false;
-        }, smooth ? 1000 : 200);
+            if (messagesEndRef.current) {
+                messagesEndRef.current.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+            }
+        }, 100);
     }, []);
 
-    const fetchMessages = async (loadMore = false) => {
-        try {
-            if (!loadMore) {
-                setIsLoadingMessages(true);
-                isInitialLoadRef.current = true;
-            } else {
-                setLoadingMore(true);
-                isInitialLoadRef.current = false;
-                if (messagesContainerRef.current) {
-                    previousScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
-                }
-            }
-
-            const limit = 50;
-            const offset = loadMore ? messages.length : 0;
-            const data = await contactMessagesAPI.getByContactId(contactId, { limit, offset });
-
-            if (loadMore) {
-                setMessages(prev => [...data.messages, ...prev]);
-                setHasMore(data.messages.length >= limit);
-
-                setTimeout(() => {
-                    if (messagesContainerRef.current) {
-                        const newScrollHeight = messagesContainerRef.current.scrollHeight;
-                        const scrollDiff = newScrollHeight - previousScrollHeightRef.current;
-                        messagesContainerRef.current.scrollTop = scrollDiff;
-                    }
-                }, 0);
-            } else {
-                setMessages(data.messages);
-                setHasMore(data.messages.length >= limit);
-            }
-        } catch (error: any) {
-            console.error('Error fetching messages:', error);
-            antMessage.error('Ошибка загрузки сообщений');
-        } finally {
-            setIsLoadingMessages(false);
-            setLoadingMore(false);
+    useEffect(() => {
+        if (contactId || activeOrder?.id) {
+            fetchTimeline(false);
         }
-    };
-
-    const [otherViewers, setOtherViewers] = useState<{ name: string; id: number }[]>([]);
+    }, [contactId, activeOrder?.id, fetchTimeline]);
 
     useEffect(() => {
-        if (contactId) fetchMessages(false);
-    }, [contactId]);
-
-    useEffect(() => {
-        if (!contactId || !activeOrder || !activeOrder.main_id) return;
-
-        // 1. Message Subscription
-        const channel = supabase
-            .channel(`messages:${activeOrder.main_id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages',
-                    filter: `main_id=eq.${activeOrder.main_id}`
-                },
-                (payload) => {
-                    const newMessage = payload.new as Message;
-                    setMessages(prev => {
-                        // Check if we already have this message (by ID)
-                        if (prev.some(m => String(m.id) === String(newMessage.id))) return prev;
-
-                        // Deduplication for optimistic updates (Scenario: Socket event faster than API response)
-                        if (manager && Number(newMessage.manager_id) === Number(manager.id)) {
-                            // Find a pending message that matches this new message
-                            const pendingMatchIndex = prev.findIndex(m =>
-                                m.status === 'pending' &&
-                                Number(m.manager_id) === Number(manager.id) &&
-                                m.message_type === newMessage.message_type &&
-                                (m.message_type === 'text' ? m.content === newMessage.content : true)
-                            );
-
-                            if (pendingMatchIndex !== -1) {
-                                // Match found! Replace the pending message with the real one
-                                const newArr = [...prev];
-                                // Use the real message but keep sender info
-                                newArr[pendingMatchIndex] = { ...newMessage, sender: manager };
-                                return newArr;
-                            }
-                        }
-
-                        // If no optimistic match, add new message
-                        return [...prev, newMessage];
-                    });
-
-                    // Scroll to bottom if new message arrived
-                    if (messagesContainerRef.current) {
-                        const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-                        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-                        if (isNearBottom) {
-                            scrollToBottom(true);
-                        }
-                    }
-                }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'messages',
-                    filter: `main_id=eq.${activeOrder.main_id}`
-                },
-                (payload) => {
-                    const updatedMsg = payload.new as Message;
-                    setMessages(prev => prev.map(m => String(m.id) === String(updatedMsg.id) ? { ...m, ...updatedMsg } : m));
-                }
-            )
-            .on('broadcast', { event: 'typing' }, (payload) => {
-                const { name } = payload.payload;
-                if (name && manager && name !== (manager.name || manager.email)) {
-                    setTypingUsers(prev => {
-                        const next = new Set(prev);
-                        next.add(name);
-                        return next;
-                    });
-                    setTimeout(() => {
-                        setTypingUsers(prev => {
-                            const next = new Set(prev);
-                            next.delete(name);
-                            return next;
-                        });
-                    }, 3000);
-                }
-            })
-            .subscribe();
-
-        broadcastChannelRef.current = channel;
-
-        // 2. Presence Subscription
-        let presenceChannel: RealtimeChannel | null = null;
-        if (manager) {
-            presenceChannel = supabase.channel(`chat_presence:${activeOrder.main_id}`, {
-                config: {
-                    presence: {
-                        key: String(manager.id),
-                    },
-                },
-            });
-
-            presenceChannel
-                .on('presence', { event: 'sync' }, () => {
-                    const state = presenceChannel?.presenceState();
-                    if (!state) return;
-                    const viewers: { name: string; id: number }[] = [];
-                    for (const key in state) {
-                        if (key !== String(manager.id)) {
-                            const userState = (state as any)[key]?.[0] as { name: string; user_id: number } | undefined;
-                            if (userState) {
-                                viewers.push({ name: userState.name, id: userState.user_id });
-                            }
-                        }
-                    }
-                    setOtherViewers(viewers);
-                })
-                .subscribe(async (status: string) => {
-                    if (status === 'SUBSCRIBED' && presenceChannel) {
-                        await presenceChannel.track({
-                            user_id: manager.id,
-                            name: manager.name,
-                            online_at: new Date().toISOString(),
-                        });
-                    }
-                });
-        }
-
-        return () => {
-            supabase.removeChannel(channel);
-            if (presenceChannel) supabase.removeChannel(presenceChannel);
-        };
-    }, [contactId, activeOrder?.main_id, manager]);
-
-    useEffect(() => {
-        if (messages.length > 0 && !isLoadingMessages && !loadingMore && isInitialLoadRef.current) {
-            // Initial jump
+        if (!loading && !loadingMore && messages.length > 0 && messages.length <= 50) {
             scrollToBottom(false);
-
-            // Watch for image/media loading which might change layout
-            const container = messagesContainerRef.current;
-            if (container) {
-                const observer = new MutationObserver(() => {
-                    if (isInitialLoadRef.current) {
-                        scrollToBottom(false);
-                    }
-                });
-                observer.observe(container, { childList: true, subtree: true });
-
-                // Final check after a bit more time for any late rendering
-                const timer = setTimeout(() => {
-                    scrollToBottom(false);
-                    isInitialLoadRef.current = false;
-                    observer.disconnect();
-                }, 1000);
-
-                return () => {
-                    clearTimeout(timer);
-                    observer.disconnect();
-                };
-            }
         }
-    }, [messages.length, isLoadingMessages, loadingMore, scrollToBottom]);
-
-    const handleTyping = async () => {
-        const now = Date.now();
-        if (now - lastTypingSentRef.current > 2000 && manager && broadcastChannelRef.current) {
-            lastTypingSentRef.current = now;
-            await broadcastChannelRef.current.send({
-                type: 'broadcast',
-                event: 'typing',
-                payload: { name: manager.name || manager.email }
-            });
-        }
-    };
+    }, [messages.length, loading, loadingMore, scrollToBottom]);
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        if (isAutoScrollingRef.current) return; // Prevent loading more while auto-scrolling to bottom
-
         const container = e.currentTarget;
-        if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages && messages.length > 0) {
-            fetchMessages(true);
+        if (container.scrollTop < 100 && hasMore && !loadingMore && !loading) {
+            previousScrollHeightRef.current = container.scrollHeight;
+            fetchTimeline(true);
         }
     };
 
-    const handleAddReaction = async (msg: Message, emoji: string) => {
-        setMessages(prev => prev.map(m => {
-            if (String(m.id) === String(msg.id)) {
-                const reactions = m.reactions || [];
-                return { ...m, reactions: [...reactions, { emoji, author: 'Me', created_at: new Date().toISOString() }] };
-            }
-            return m;
-        }));
-        try {
-            await messagesAPI.addReaction(msg.id, emoji);
-        } catch (error) {
-            antMessage.error('Не удалось добавить реакцию');
+    useEffect(() => {
+        if (loadingMore || !messagesContainerRef.current) return;
+        const container = messagesContainerRef.current;
+        const newScrollHeight = container.scrollHeight;
+        const scrollDiff = newScrollHeight - previousScrollHeightRef.current;
+        if (scrollDiff > 0) {
+            container.scrollTop = scrollDiff;
         }
+    }, [messages.length, loadingMore]);
+
+    const handleSendText = async (text: string) => {
+        const success = await sendMessage(text, inputMode);
+        if (success) scrollToBottom(true);
     };
 
-    const handleReplyClick = (msgId: string | number) => {
-        const element = document.getElementById(`msg-${msgId}`);
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setHighlightedMsgId(msgId);
-            setTimeout(() => setHighlightedMsgId(null), 2000);
-        } else {
-            antMessage.info('Сообщение не найдено в текущем окне');
+    const parseDateInput = (d: any) => {
+        if (!d) return 0;
+        if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
+            return new Date(d.replace(' ', 'T') + 'Z').getTime();
         }
+        return new Date(d).getTime();
     };
 
-    const handleSendMessage = async (text: string) => {
-        if (!activeOrder?.id || !manager) return;
-        setSending(true);
-        const optimisticId = `temp-${Date.now()}`;
-        const optimisticMessage: Message = {
-            id: optimisticId as any,
-            content: text,
-            author_type: 'manager',
-            message_type: 'text',
-            'Created Date': new Date().toISOString(),
-            is_read: true,
-            main_id: activeOrder.main_id,
-            manager_id: manager.id,
-            status: 'pending' as any,
-            reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id,
-            sender: manager
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
-        scrollToBottom();
-        const currentReplyTo = replyTo;
-        setReplyTo(null);
+    const renderList = () => {
+        const displayList = [...messages].sort((a, b) => {
+            const da = parseDateInput(a.sort_date || a['Created Date'] || a.created_at);
+            const db = parseDateInput(b.sort_date || b['Created Date'] || b.created_at);
+            return da - db;
+        });
 
-        try {
-            const savedMessage = await orderMessagesAPI.sendClientMessage(activeOrder.id, text, Number(currentReplyTo?.message_id_tg) || undefined);
-            // Replace optimistic message with real one
-            setMessages(prev => prev.map(m => String(m.id) === optimisticId ? { ...savedMessage, sender: manager } : m));
-        } catch (error: any) {
-            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
-            antMessage.error('Ошибка отправки');
-        } finally {
-            setSending(false);
-        }
-    };
-
-    // UI for Presence
-    const renderPresence = () => {
-        const typingList = Array.from(typingUsers);
-        if (otherViewers.length === 0 && typingList.length === 0) return null;
-
-        return (
-            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8, paddingLeft: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
-                {otherViewers.length > 0 && (
-                    <span>Сейчас смотрят: {otherViewers.map(v => v.name).join(', ')}</span>
-                )}
-                {typingList.length > 0 && (
-                    <span style={{ color: '#1890ff', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <LoadingOutlined /> {typingList.join(', ')} {typingList.length === 1 ? 'печатает' : 'печатают'}...
-                    </span>
-                )}
-            </div>
-        );
-    };
-
-    const uploadFile = async (file: File, caption?: string) => {
-        if (!activeOrder?.id || !manager) return;
-        setSending(true);
-        const optimisticId = `temp-${Date.now()}`;
-        const isImage = file.type.startsWith('image/');
-        const optimisticMessage: Message = {
-            id: optimisticId as any,
-            content: caption || '',
-            author_type: 'manager',
-            message_type: isImage ? 'image' : 'file',
-            'Created Date': new Date().toISOString(),
-            is_read: true,
-            main_id: activeOrder.main_id,
-            manager_id: manager.id,
-            status: 'pending' as any,
-            attachment_url_internal: URL.createObjectURL(file), // Support image preview instantly
-            reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id,
-            sender: manager
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
-        scrollToBottom();
-        const currentReplyTo = replyTo;
-        setReplyTo(null);
-
-        try {
-            const savedMessage = await orderMessagesAPI.sendClientFile(activeOrder.id, file, caption, Number(currentReplyTo?.message_id_tg) || undefined);
-            setMessages(prev => prev.map(m => String(m.id) === optimisticId ? { ...savedMessage, sender: manager } : m));
-        } catch (error) {
-            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
-            antMessage.error('Ошибка отправки файла');
-        } finally {
-            setSending(false);
-        }
-    };
-
-    const sendVoice = async (voice: Blob, duration: number) => {
-        if (!activeOrder?.id || !manager) return;
-        setSending(true);
-        const optimisticId = `temp-voice-${Date.now()}`;
-        const optimisticMessage: Message = {
-            id: optimisticId as any,
-            content: '',
-            author_type: 'manager',
-            message_type: 'voice',
-            'Created Date': new Date().toISOString(),
-            is_read: true,
-            main_id: activeOrder.main_id,
-            status: 'pending' as any,
-            voice_duration: duration,
-            attachment_url_internal: URL.createObjectURL(voice),
-            reply_to_mess_id_tg: replyTo?.message_id_tg,
-            reply_to_id: replyTo?.id,
-            sender: manager || undefined
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
-        scrollToBottom();
-        const currentReplyTo = replyTo;
-        setReplyTo(null);
-        try {
-            const savedMessage = await orderMessagesAPI.sendClientVoice(activeOrder.id, voice, duration, Number(currentReplyTo?.message_id_tg) || undefined);
-            setMessages(prev => prev.map(m => String(m.id) === optimisticId ? { ...savedMessage, sender: manager } : m));
-        } catch (error) {
-            setMessages(prev => prev.filter(m => String(m.id) !== String(optimisticId)));
-            antMessage.error('Ошибка отправки ГС');
-        } finally {
-            setSending(false);
-        }
-    };
-
-    const renderMessages = () => {
-        const groupedMessages: { date: string, msgs: Message[] }[] = [];
-        messages.forEach(msg => {
-            const dateKey = formatDate(msg['Created Date'] || msg.created_at);
+        const groupedMessages: { date: string, msgs: TimelineMessage[] }[] = [];
+        displayList.forEach(msg => {
+            const d = msg.sort_date || msg['Created Date'] || msg.created_at;
+            const dateKey = formatDate(d);
             const lastGroup = groupedMessages[groupedMessages.length - 1];
             if (lastGroup && lastGroup.date === dateKey) {
-                lastGroup.msgs.push(msg);
+                lastGroup.msgs.push(msg as TimelineMessage);
             } else {
-                groupedMessages.push({ date: dateKey, msgs: [msg] });
+                groupedMessages.push({ date: dateKey, msgs: [msg as TimelineMessage] });
             }
         });
 
-        return groupedMessages.map(group => (
-            <div key={group.date}>
-                <div style={{ textAlign: 'center', margin: '16px 0', opacity: 0.5, fontSize: 12 }}>
-                    <span style={{ background: '#f5f5f5', padding: '4px 12px', borderRadius: 12 }}>{group.date}</span>
-                </div>
-                {group.msgs.map((msg, index) => {
-                    const isOwn = !isClientMessage(msg.author_type);
-                    let replyCtx: Message | undefined = undefined;
-                    if (msg.reply_to_mess_id_tg) {
-                        replyCtx = messages.find(m => String(m.message_id_tg) === String(msg.reply_to_mess_id_tg));
-                    }
-                    if (!replyCtx && (msg.reply_to_id || msg.reply_to?.id)) {
-                        const rId = msg.reply_to_id || msg.reply_to?.id;
-                        replyCtx = messages.find(m => String(m.id) === String(rId));
-                    }
-                    return (
-                        <UnifiedMessageBubble
-                            key={msg.id || index}
-                            msg={msg}
-                            replyMessage={replyCtx}
-                            isOwn={isOwn}
-                            isPending={msg.status === 'pending'}
-                            variant="client"
-                            onAddReaction={handleAddReaction}
-                            onReply={(m) => setReplyTo(m)}
-                            onReplyClick={handleReplyClick}
-                            highlighted={highlightedMsgId === msg.id}
-                        />
-                    );
-                })}
-            </div>
-        ));
+        return (
+            <>
+                {loadingMore && <div style={{ textAlign: 'center', marginBottom: 16 }}><Spin size="small" /></div>}
+                {groupedMessages.map(group => (
+                    <div key={group.date}>
+                        <div style={{ textAlign: 'center', margin: '16px 0', opacity: 0.5, fontSize: 12 }}>
+                            <span style={{ background: '#f5f5f5', padding: '4px 12px', borderRadius: 12 }}>{group.date}</span>
+                        </div>
+                        {group.msgs.map(msg => {
+                            if (msg.is_system) {
+                                return (
+                                    <div key={`${msg.source_type}_${msg.id}`} style={{ textAlign: 'center', margin: '12px 0' }}>
+                                        <div style={{ background: '#f0f0f0', display: 'inline-block', padding: '6px 14px', borderRadius: 16, fontSize: 12, color: '#8c8c8c', maxWidth: '80%', wordWrap: 'break-word' }}>
+                                            {msg.content}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            const variant = msg.source_type === 'internal' ? 'internal' : 'client';
+                            let isOwn = false;
+                            if (msg.source_type === 'client') {
+                                isOwn = !isClientMessage(msg.author_type);
+                            } else {
+                                isOwn = msg.sender?.id === manager?.id || msg.manager_id === manager?.id;
+                            }
+
+                            const alignment = variant === 'internal' ? (isOwn ? 'right' : 'left') : undefined;
+
+                            let replyCtx: Message | undefined = undefined;
+                            if (msg.reply_to_mess_id_tg) {
+                                replyCtx = messages.find(m => m.message_id_tg === msg.reply_to_mess_id_tg);
+                            } else if ((msg as any).reply_to_id) {
+                                replyCtx = messages.find(m => m.id === (msg as any).reply_to_id && m.source_type === 'internal');
+                            }
+
+                            return (
+                                <UnifiedMessageBubble
+                                    key={`${msg.source_type}_${msg.id}`}
+                                    msg={msg}
+                                    isOwn={isOwn}
+                                    onReply={(m) => setReplyTo(m as TimelineMessage)}
+                                    onAddReaction={(m, e) => addReaction(m.id, e)}
+                                    replyMessage={replyCtx}
+                                    variant={variant}
+                                    alignment={alignment}
+                                />
+                            );
+                        })}
+                    </div>
+                ))}
+            </>
+        );
     };
 
     return (
         <div style={{
-            flex: 1,
             display: 'flex',
             flexDirection: 'column',
+            height: '100%',
             background: '#fff',
-            minHeight: 0,
+            borderRadius: isMobile ? 0 : 8,
+            border: isMobile ? 'none' : '1px solid #f0f0f0',
             ...style
         }}>
             {showHeader && (
-                <div style={{ padding: isMobile ? '12px 16px' : '16px 24px', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{contactName || 'Чат с клиентом'}</div>
+                <div style={{
+                    padding: '8px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafafa', borderRadius: isMobile ? 0 : '8px 8px 0 0'
+                }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {contactName || 'Чат с клиентом'}
+                    </div>
+                    {activeOrder && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Tooltip title="Переключить режим отправки">
+                                <Switch
+                                    checkedChildren={<><TeamOutlined /> Свои</>}
+                                    unCheckedChildren={<><GlobalOutlined /> Клиент</>}
+                                    checked={inputMode === 'internal'}
+                                    onChange={(checked) => setInputMode(checked ? 'internal' : 'client')}
+                                    style={{ background: inputMode === 'internal' ? '#faad14' : '#1890ff' }}
+                                />
+                            </Tooltip>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -507,36 +216,46 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 ref={messagesContainerRef}
                 onScroll={handleScroll}
                 style={{
-                    flex: 1, padding: isMobile ? '12px' : '24px', overflowY: 'auto', background: '#f5f5f5',
+                    flex: 1, overflowY: 'auto', padding: isMobile ? '8px 4px' : 16, background: '#f5f5f5',
                     backgroundImage: 'url("https://gw.alipayobjects.com/zos/rmsportal/FfdJeJRQWjEeGTpqgBKj.png")',
                     backgroundBlendMode: 'overlay',
                 }}
             >
-                {renderPresence()}
-                {isLoadingMessages ? (
-                    <div style={{ textAlign: 'center', marginTop: 40 }}><Spin /></div>
-                ) : (
-                    <>
-                        {loadingMore && <div style={{ textAlign: 'center', marginBottom: 16 }}><Spin size="small" /></div>}
-                        {messages.length === 0 ? <Empty description="Нет сообщений" image={Empty.PRESENTED_IMAGE_SIMPLE} /> : renderMessages()}
-                        <div ref={messagesEndRef} />
-                    </>
-                )}
+                {loading && messages.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
+                ) : messages.length === 0 ? (
+                    <Empty description="Нет сообщений" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ) : renderList()}
+                <div ref={messagesEndRef} />
             </div>
 
-            {
-                activeOrder && (
+            {replyTo && (
+                <div style={{ padding: '8px 16px', background: '#f9f9f9', borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                    <div>
+                        Ответ на: <b>{replyTo.display_author || (replyTo as any).sender?.name}</b>
+                        <div style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#888' }}>
+                            {replyTo.content || 'Вложение'}
+                        </div>
+                    </div>
+                    <button onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', color: '#1890ff', cursor: 'pointer', padding: 0 }}>Отмена</button>
+                </div>
+            )}
+
+            {activeOrder ? (
+                <div style={{ borderLeft: inputMode === 'internal' ? '4px solid #faad14' : '4px solid #1890ff', transition: 'all 0.3s' }}>
                     <ChatInput
-                        onSendText={handleSendMessage}
-                        onSendVoice={sendVoice}
-                        onSendFile={uploadFile}
+                        onSendText={handleSendText}
+                        onSendVoice={async (v, d) => { await sendMessage('', inputMode, undefined, v, d); }}
+                        onSendFile={async (f, c) => { await sendMessage(c || '', inputMode, f); }}
                         sending={sending}
-                        replyTo={replyTo}
-                        onCancelReply={() => setReplyTo(null)}
-                        onTyping={handleTyping}
+                        placeholder={inputMode === 'internal' ? "Внутренняя заметка..." : "Написать клиенту..."}
                     />
-                )
-            }
-        </div >
+                </div>
+            ) : (
+                <div style={{ padding: '16px', textAlign: 'center', background: '#fafafa', borderTop: '1px solid #f0f0f0', color: '#8c8c8c' }}>
+                    Выберите активную сделку для отправки сообщений
+                </div>
+            )}
+        </div>
     );
 };

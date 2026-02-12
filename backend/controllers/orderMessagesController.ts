@@ -253,8 +253,11 @@ class OrderMessagesController {
     async getTimeline(req: Request, res: Response) {
         try {
             const { orderId } = req.params;
-            const { limit, before } = req.query;
-            const result = await orderService.getTimeline(orderId as string, Number(limit) || 50, before as string);
+            const { limit, before, contactId } = req.query;
+            const result = await orderService.getTimeline({
+                orderId: orderId === '0' ? undefined : orderId as string,
+                contactId: contactId ? Number(contactId) : undefined
+            }, Number(limit) || 50, before as string);
             res.json(result);
         } catch (error: any) {
             console.error('Error fetching timeline:', error);

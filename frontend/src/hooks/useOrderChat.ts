@@ -25,6 +25,15 @@ const isClientMessage = (type?: string) => {
     return ['user', 'client', 'customer', 'Клиент'].includes(type || '');
 };
 
+const parseMessageDate = (m: any) => {
+    const d = m.sort_date || m.created_at || m['Created Date'];
+    if (!d) return 0;
+    if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
+        return new Date(d.replace(' ', 'T') + 'Z').getTime();
+    }
+    return new Date(d).getTime();
+};
+
 export const useOrderChat = (orderId: number, mainId?: string, contactId?: number) => {
     const { manager } = useAuth();
 
@@ -41,7 +50,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     }, [messages]);
 
     const fetchTimeline = useCallback(async (loadMore = false) => {
-        if (!orderId) return;
+        if (!orderId && !contactId) return;
         try {
             if (!loadMore) setLoading(true);
             else setLoadingMore(true);
@@ -55,29 +64,43 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                 before = oldest.sort_date || oldest.created_at || oldest['Created Date'];
             }
 
-            const response = await orderMessagesAPI.getTimeline(orderId, { limit, before });
+            const response = await orderMessagesAPI.getTimeline(orderId, { limit, before, contactId });
+            const fetched = (response.messages as TimelineMessage[]);
 
-            const parseDate = (m: TimelineMessage) => {
-                const d = m.sort_date || m.created_at || m['Created Date'];
-                if (!d) return 0;
-                if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
-                    return new Date(d.replace(' ', 'T') + 'Z').getTime();
+            setMessages(prev => {
+                const newList = loadMore ? [...fetched, ...prev] : fetched;
+
+                // Deduplication and Pending Cleanup
+                const seen = new Set<string>();
+                const combined: TimelineMessage[] = [];
+
+                // Sort everything first to make deduplication consistent
+                const sorted = [...newList].sort((a, b) => parseMessageDate(a) - parseMessageDate(b));
+
+                for (const m of sorted) {
+                    const uid = `${m.id}_${m.source_type || 'c'}`;
+
+                    // If it's a real message, check if we have a pending version of it
+                    if (!m.isPending) {
+                        // Check if we have a pending message with same content and type
+                        const pendingIdx = combined.findIndex(ex =>
+                            ex.isPending &&
+                            ex.content === m.content &&
+                            ex.source_type === m.source_type
+                        );
+                        if (pendingIdx !== -1) {
+                            combined.splice(pendingIdx, 1);
+                        }
+                    }
+
+                    if (!seen.has(uid)) {
+                        seen.add(uid);
+                        combined.push(m);
+                    }
                 }
-                return new Date(d).getTime();
-            };
 
-            const fetched = (response.messages as TimelineMessage[]).sort((a, b) => parseDate(a) - parseDate(b));
-
-            if (loadMore) {
-                setMessages(prev => {
-                    const existingIds = new Set(prev.map(m => m.id + '_' + (m.source_type || 'c')));
-                    const newMsgs = fetched.filter(m => !existingIds.has(m.id + '_' + (m.source_type || 'c')));
-                    const combined = [...newMsgs, ...prev].sort((a, b) => parseDate(a) - parseDate(b));
-                    return combined;
-                });
-            } else {
-                setMessages(fetched);
-            }
+                return combined.sort((a, b) => parseMessageDate(a) - parseMessageDate(b));
+            });
 
             setHasMore(response.meta.has_more);
         } catch (error) {
@@ -208,17 +231,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                 const filtered = prev.filter(m => !(m.isPending && m.content === msg.content && m.source_type === msg.source_type));
 
                 // Sort by date to maintain order (Oldest first)
-                const newList = [...filtered, msg].sort((a, b) => {
-                    const parseDate = (m: TimelineMessage) => {
-                        const d = m.sort_date || m.created_at || m['Created Date'];
-                        if (!d) return 0;
-                        if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
-                            return new Date(d.replace(' ', 'T') + 'Z').getTime();
-                        }
-                        return new Date(d).getTime();
-                    };
-                    return parseDate(a) - parseDate(b);
-                });
+                const newList = [...filtered, msg].sort((a, b) => parseMessageDate(a) - parseMessageDate(b));
                 return newList;
             });
         };
