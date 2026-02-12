@@ -558,7 +558,7 @@ class OrderMessagesService {
             .limit(limit);
 
         if (currentMainId || allRelatedOrderIds.length > 0) {
-            const filters = [];
+            const filters: string[] = [];
             if (currentMainId) filters.push(`main_id.eq.${currentMainId}`);
             if (allRelatedOrderIds.length > 0) filters.push(...allRelatedOrderIds.map(id => `order_id.eq.${id}`));
             internalQuery = internalQuery.or(filters.join(','));
