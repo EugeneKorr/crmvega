@@ -101,7 +101,7 @@ class BubbleController {
             if (!finalMainId || !note) return res.status(400).json({ success: false, error: 'Missing main_id/note' });
 
             const result = await bubbleService.processNoteToOrder(finalMainId, note);
-            res.json({ success: true, ...result });
+            res.json(result);
         } catch (error: any) {
             console.error('[Bubble Webhook] Error in note_to_order:', error);
             res.status(error.message === 'Order not found' ? 404 : 500).json({ success: false, error: error.message });
