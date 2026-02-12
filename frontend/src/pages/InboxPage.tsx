@@ -236,6 +236,24 @@ const InboxPage: React.FC = () => {
         }
     };
 
+    const formatMessageDate = (dateString: string) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const isToday = date.toDateString() === now.toDateString();
+
+        if (isToday) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const isThisYear = date.getFullYear() === now.getFullYear();
+        if (isThisYear) {
+            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' +
+                date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    };
+
     const screens = Grid.useBreakpoint();
     const isMobile = !screens.md;
 
@@ -329,13 +347,17 @@ const InboxPage: React.FC = () => {
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <Text strong style={{
                                                             fontSize: 14,
-                                                            color: contact.unread_count && contact.unread_count > 0 ? '#1890ff' : 'inherit'
+                                                            color: contact.unread_count && contact.unread_count > 0 ? '#1890ff' : 'inherit',
+                                                            whiteSpace: 'nowrap',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            marginRight: 8
                                                         }}>
                                                             {contact.name || 'Без имени'}
                                                         </Text>
                                                         {contact.last_message && contact.last_message['Created Date'] && (
-                                                            <Text type="secondary" style={{ fontSize: 10 }}>
-                                                                {new Date(contact.last_message['Created Date']).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            <Text type="secondary" style={{ fontSize: 10, flexShrink: 0 }}>
+                                                                {formatMessageDate(contact.last_message['Created Date'])}
                                                             </Text>
                                                         )}
                                                     </div>
