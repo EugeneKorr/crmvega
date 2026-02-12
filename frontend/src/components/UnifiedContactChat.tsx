@@ -243,8 +243,31 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
 
     useEffect(() => {
         if (messages.length > 0 && !isLoadingMessages && !loadingMore && isInitialLoadRef.current) {
-            scrollToBottom(true);
-            isInitialLoadRef.current = false;
+            // Initial jump
+            scrollToBottom(false);
+
+            // Watch for image/media loading which might change layout
+            const container = messagesContainerRef.current;
+            if (container) {
+                const observer = new MutationObserver(() => {
+                    if (isInitialLoadRef.current) {
+                        scrollToBottom(false);
+                    }
+                });
+                observer.observe(container, { childList: true, subtree: true });
+
+                // Final check after a bit more time for any late rendering
+                const timer = setTimeout(() => {
+                    scrollToBottom(false);
+                    isInitialLoadRef.current = false;
+                    observer.disconnect();
+                }, 1000);
+
+                return () => {
+                    clearTimeout(timer);
+                    observer.disconnect();
+                };
+            }
         }
     }, [messages.length, isLoadingMessages, loadingMore, scrollToBottom]);
 
