@@ -145,24 +145,18 @@ const InboxPage: React.FC = () => {
 
             if (isLoadMore) {
                 setContacts(prev => [...prev, ...data]);
+                setOffset(currentOffset);
             } else if (!isBackground) {
                 setContacts(data);
+                setOffset(0);
             } else {
-                // Background refresh for existing list: 
-                // We should only update if we are on the first page to avoid jumping
                 if (currentOffset === 0) {
-                    setContacts(prev => {
-                        const newContacts = [...data];
-                        // Preserve contacts not in the first page if needed, 
-                        // but usually background refresh is only for the visible top.
-                        return newContacts;
-                    });
+                    setContacts(prev => [...data]);
                 }
             }
 
             setHasMore(data.length === PAGE_SIZE);
 
-            // If we have contactId in URL and no selection, select it
             const contactIdFromUrl = searchParams.get('contactId');
             if (contactIdFromUrl && !selectedContactRef.current) {
                 const contact = data.find((c: any) => String(c.id) === contactIdFromUrl);
@@ -179,10 +173,24 @@ const InboxPage: React.FC = () => {
         }
     };
 
+    const handleMarkAllRead = async () => {
+        try {
+            setIsLoadingContacts(true);
+            const { error } = await supabase.rpc('mark_all_messages_read');
+            if (error) throw error;
+            antMessage.success('Все сообщения прочитаны');
+            fetchContacts(false, 0); // Refresh list
+        } catch (error) {
+            console.error('Error marking all read:', error);
+            antMessage.error('Ошибка при сбросе счетчиков');
+        } finally {
+            setIsLoadingContacts(false);
+        }
+    };
+
     const handleLoadMore = () => {
         if (!hasMore || isLoadingMore || isLoadingContacts) return;
         const nextOffset = offset + PAGE_SIZE;
-        setOffset(nextOffset);
         fetchContacts(false, nextOffset, true);
     };
 
@@ -252,29 +260,39 @@ const InboxPage: React.FC = () => {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             allowClear
                         />
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <Button
+                                    type={!showUnreadOnly ? "primary" : "default"}
+                                    size="small"
+                                    shape="round"
+                                    onClick={() => {
+                                        setShowUnreadOnly(false);
+                                        setSearchParams(curr => { curr.delete('filter'); return curr; });
+                                    }}
+                                >
+                                    Все
+                                </Button>
+                                <Button
+                                    type={showUnreadOnly ? "primary" : "default"}
+                                    size="small"
+                                    shape="round"
+                                    danger={showUnreadOnly}
+                                    onClick={() => {
+                                        setShowUnreadOnly(true);
+                                        setSearchParams(curr => { curr.set('filter', 'unread'); return curr; });
+                                    }}
+                                >
+                                    Непрочитанные
+                                </Button>
+                            </div>
                             <Button
-                                type={!showUnreadOnly ? "primary" : "default"}
+                                type="text"
                                 size="small"
-                                shape="round"
-                                onClick={() => {
-                                    setShowUnreadOnly(false);
-                                    setSearchParams(curr => { curr.delete('filter'); return curr; });
-                                }}
+                                style={{ fontSize: '11px', color: '#8c8c8c' }}
+                                onClick={handleMarkAllRead}
                             >
-                                Все
-                            </Button>
-                            <Button
-                                type={showUnreadOnly ? "primary" : "default"}
-                                size="small"
-                                shape="round"
-                                danger={showUnreadOnly}
-                                onClick={() => {
-                                    setShowUnreadOnly(true);
-                                    setSearchParams(curr => { curr.set('filter', 'unread'); return curr; });
-                                }}
-                            >
-                                Непрочитанные
+                                Прочитать все
                             </Button>
                         </div>
                     </div>
