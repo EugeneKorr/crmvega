@@ -127,8 +127,20 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
 
   // Rendering
   const renderList = () => {
-    // Messages are DESC (Newest first) from hook. We reverse for display (Oldest top).
-    const displayList = [...messages].reverse();
+    const parseDateInput = (d: any) => {
+      if (!d) return 0;
+      if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
+        return new Date(d.replace(' ', 'T') + 'Z').getTime();
+      }
+      return new Date(d).getTime();
+    };
+
+    // Force strict ASC (Oldest first) sorting for rendering
+    const displayList = [...messages].sort((a, b) => {
+      const da = parseDateInput(a.sort_date || a['Created Date'] || a.created_at);
+      const db = parseDateInput(b.sort_date || b['Created Date'] || b.created_at);
+      return da - db;
+    });
 
     const groupedMessages: { date: string, msgs: TimelineMessage[] }[] = [];
     displayList.forEach(msg => {

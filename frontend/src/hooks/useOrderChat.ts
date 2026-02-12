@@ -56,13 +56,24 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
             }
 
             const response = await orderMessagesAPI.getTimeline(orderId, { limit, before });
-            const fetched = (response.messages as TimelineMessage[]).reverse(); // API returns desc, we need asc
+
+            const parseDate = (m: TimelineMessage) => {
+                const d = m.sort_date || m.created_at || m['Created Date'];
+                if (!d) return 0;
+                if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
+                    return new Date(d.replace(' ', 'T') + 'Z').getTime();
+                }
+                return new Date(d).getTime();
+            };
+
+            const fetched = (response.messages as TimelineMessage[]).sort((a, b) => parseDate(a) - parseDate(b));
 
             if (loadMore) {
                 setMessages(prev => {
                     const existingIds = new Set(prev.map(m => m.id + '_' + (m.source_type || 'c')));
                     const newMsgs = fetched.filter(m => !existingIds.has(m.id + '_' + (m.source_type || 'c')));
-                    return [...newMsgs, ...prev]; // Older messages go BEFORE current ones
+                    const combined = [...newMsgs, ...prev].sort((a, b) => parseDate(a) - parseDate(b));
+                    return combined;
                 });
             } else {
                 setMessages(fetched);
@@ -196,11 +207,17 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                 // If it's our own message coming back, remove the pending one match by content usually
                 const filtered = prev.filter(m => !(m.isPending && m.content === msg.content && m.source_type === msg.source_type));
 
-                // Sort by date to maintain order
+                // Sort by date to maintain order (Oldest first)
                 const newList = [...filtered, msg].sort((a, b) => {
-                    const dateA = new Date(a.sort_date || a.created_at || a['Created Date'] || 0).getTime();
-                    const dateB = new Date(b.sort_date || b.created_at || b['Created Date'] || 0).getTime();
-                    return dateA - dateB;
+                    const parseDate = (m: TimelineMessage) => {
+                        const d = m.sort_date || m.created_at || m['Created Date'];
+                        if (!d) return 0;
+                        if (typeof d === 'string' && !d.includes('Z') && !d.includes('+')) {
+                            return new Date(d.replace(' ', 'T') + 'Z').getTime();
+                        }
+                        return new Date(d).getTime();
+                    };
+                    return parseDate(a) - parseDate(b);
                 });
                 return newList;
             });
