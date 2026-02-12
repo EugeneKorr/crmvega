@@ -2,11 +2,12 @@
   "name": "crm-backend",
   "version": "1.0.0",
   "description": "CRM Backend with Supabase",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
     "dev": "nodemon --ext js,ts --exec ts-node index.ts",
     "build": "tsc",
+    "postinstall": "npm run build",
     "migrate": "supabase db reset"
   },
   "dependencies": {
