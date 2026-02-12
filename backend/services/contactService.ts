@@ -75,34 +75,55 @@ class ContactService {
         const limitNum = Number(limit);
         const offsetNum = Number(offset);
 
-        let query = supabase
-            .from('contacts')
-            .select('id, name, phone, telegram_user_id, telegram_username, first_name, last_name, last_message_at, avatar_url')
-            .order('last_message_at', { ascending: false, nullsFirst: false })
-            .range(offsetNum, offsetNum + limitNum - 1);
+        let contacts: any[] = [];
 
-        if (search) {
-            query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
-        }
+        if (unread) {
+            // When filtering by unread, we need to find contacts who HAVE unread messages.
+            // First, find unique main_ids with unread messages
+            const { data: unreadMainIds } = await supabase.rpc('get_unread_main_ids');
+            const mainIds = unreadMainIds?.map((m: any) => m.main_id) || [];
 
-        let { data: contacts, error } = await query;
+            if (mainIds.length === 0) return [];
 
-        if (error || !contacts) {
-            console.error('Error fetching contacts summary:', error);
-            // Fallback
-            const fallbackQuery = supabase
+            // Now find contact IDs associated with these main_ids
+            const { data: orders } = await supabase
+                .from('orders')
+                .select('contact_id')
+                .in('main_id', mainIds);
+
+            const contactIds = [...new Set(orders?.map(o => o.contact_id).filter(Boolean) || [])];
+            if (contactIds.length === 0) return [];
+
+            // Fetch these contacts
+            let query = supabase
                 .from('contacts')
-                .select('id, name, phone, telegram_user_id, last_message_at, avatar_url')
+                .select('id, name, phone, telegram_user_id, telegram_username, first_name, last_name, last_message_at, avatar_url')
+                .in('id', contactIds)
                 .order('last_message_at', { ascending: false, nullsFirst: false })
                 .range(offsetNum, offsetNum + limitNum - 1);
 
             if (search) {
-                fallbackQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+                query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
             }
 
-            const { data: fallbackContacts, error: fallbackError } = await fallbackQuery;
-            if (fallbackError) throw fallbackError;
-            contacts = fallbackContacts as any[];
+            const { data, error } = await query;
+            if (error) throw error;
+            contacts = data || [];
+        } else {
+            // Standard fetch
+            let query = supabase
+                .from('contacts')
+                .select('id, name, phone, telegram_user_id, telegram_username, first_name, last_name, last_message_at, avatar_url')
+                .order('last_message_at', { ascending: false, nullsFirst: false })
+                .range(offsetNum, offsetNum + limitNum - 1);
+
+            if (search) {
+                query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+            contacts = data || [];
         }
 
         if (!contacts || contacts.length === 0) return [];
