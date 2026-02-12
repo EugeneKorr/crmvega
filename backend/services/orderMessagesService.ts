@@ -558,21 +558,29 @@ class OrderMessagesService {
 
         // Normalize and Merge
         const allMessages = [
-            ...(clientMsgs || []).map((m: any) => ({
-                ...m,
-                source_type: 'client',
-                date: m['Created Date'] || m.created_at,
-                sort_date: m['Created Date'] || m.created_at
-            })),
-            ...(internalMsgs || [])
-                .map((m: any) => ({
+            ...(clientMsgs || []).map((m: any) => {
+                const rawDate = m['Created Date'] || m.created_at;
+                // Created Date is timestamp without timezone from Bubble, usually UTC or the one we want to treat as such
+                const isoDate = rawDate ? (typeof rawDate === 'string' && !rawDate.includes('Z') && !rawDate.includes('+') ? rawDate.replace(' ', 'T') + 'Z' : new Date(rawDate).toISOString()) : new Date().toISOString();
+                return {
                     ...m,
-                    source_type: 'internal',
-                    date: m.created_at,
-                    sort_date: m.created_at,
-                    message_type: m.attachment_type === 'system' ? 'system' : 'text',
-                    is_system: m.attachment_type === 'system'
-                }))
+                    source_type: 'client',
+                    date: isoDate,
+                    sort_date: isoDate
+                };
+            }),
+            ...(internalMsgs || [])
+                .map((m: any) => {
+                    const isoDate = new Date(m.created_at).toISOString();
+                    return {
+                        ...m,
+                        source_type: 'internal',
+                        date: isoDate,
+                        sort_date: isoDate,
+                        message_type: m.attachment_type === 'system' ? 'system' : 'text',
+                        is_system: m.attachment_type === 'system'
+                    };
+                })
         ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         const messages = allMessages.slice(0, limit);
