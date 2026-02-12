@@ -312,28 +312,21 @@ class OrdersService {
             .single();
 
         const settings = manager?.notification_settings || {};
-        const { all_active, statuses } = settings;
+        const { all_active = true, statuses = [] } = settings;
 
-        const { data: unreadData } = await supabase
-            .from('messages')
-            .select('main_id')
-            .eq('is_read', false)
-            .in('author_type', ['user', 'User', 'bubbleUser', 'customer', 'client', 'Client', 'Клиент', 'Telegram', 'bot', 'бот'])
-            .not('main_id', 'is', null)
-            .order('id', { ascending: false })
-            .limit(500);
+        // Fetch all unique main_ids that have unread messages using optimized RPC
+        const { data: unreadMainIds, error: rpcError } = await supabase.rpc('get_unread_main_ids');
+        if (rpcError) throw rpcError;
 
-        const distinctMainIds = [...new Set(unreadData?.map((m: any) => String(m.main_id)) || [])];
+        if (!unreadMainIds || unreadMainIds.length === 0) return 0;
 
-        if (distinctMainIds.length === 0) return 0;
+        const distinctMainIds = unreadMainIds.map((m: any) => m.main_id);
 
-        const SAFE_LIMIT = 200;
-        let finalIds = distinctMainIds.length > SAFE_LIMIT ? distinctMainIds.slice(0, SAFE_LIMIT) : distinctMainIds;
-
+        // Count distinct orders that have unread messages and match the status filter
         let query = supabase
             .from('orders')
-            .select('id', { count: 'exact' })
-            .in('main_id', finalIds);
+            .select('id', { count: 'exact', head: true })
+            .in('main_id', distinctMainIds);
 
         if (!all_active && statuses && statuses.length > 0) {
             query = query.in('status', statuses);

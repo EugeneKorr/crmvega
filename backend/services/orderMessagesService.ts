@@ -376,18 +376,22 @@ class OrderMessagesService {
     }
 
     async markClientMessagesRead(orderId: string | number) {
-        const order = await this.resolveOrderId(orderId);
-        if (!order || !order.main_id) return;
+        const { leadIds, allRelatedOrderIds } = await this.getAllRelatedLeadIds(orderId);
+        if (leadIds.length === 0) return;
 
         await supabase
             .from('messages')
             .update({ is_read: true })
-            .eq('main_id', order.main_id)
+            .in('main_id', leadIds)
             .eq('is_read', false)
             .neq('author_type', 'manager');
 
-        // Reset unread count logic if separate table exists (orders.unread_count)
-        await supabase.rpc('reset_order_unread_count', { order_id_input: order.id });
+        // Reset unread count for all related orders
+        if (allRelatedOrderIds.length > 0) {
+            await Promise.all(allRelatedOrderIds.map(id =>
+                supabase.rpc('reset_order_unread_count', { order_id_input: id })
+            ));
+        }
     }
 
     async markAllRead() {

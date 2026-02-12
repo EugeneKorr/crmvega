@@ -205,45 +205,47 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         // 1. New Messages
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages' },
+          { event: '*', schema: 'public', table: 'messages' },
           (payload: any) => {
-            const msg = payload.new;
-            // Check if message is from client
-            const isClient = msg.author_type === 'customer' || msg.author_type === 'client' || msg.author_type === 'Клиент';
-            // Check if unread (it should be true on insert usually)
-            if (isClient && !msg.is_read) {
+            if (payload.eventType === 'INSERT') {
+              const msg = payload.new;
+              // Check if message is from client
+              const isClient = msg.author_type === 'customer' || msg.author_type === 'client' || msg.author_type === 'Клиент';
+              // Check if unread (it should be true on insert usually)
+              if (isClient && !msg.is_read) {
 
-              // Check settings
-              let settings = { all_active: true, statuses: [] as string[] };
-              try {
-                const stored = localStorage.getItem(`crm_notification_settings_${manager.id}`);
-                if (stored) settings = JSON.parse(stored);
-              } catch (e) { }
+                // Check settings
+                let settings = { all_active: true, statuses: [] as string[] };
+                try {
+                  const stored = localStorage.getItem(`crm_notification_settings_${manager.id}`);
+                  if (stored) settings = JSON.parse(stored);
+                } catch (e) { }
 
-              let shouldNotify = false;
-              if (settings.statuses && settings.statuses.length > 0) {
-                if (msg.order_status && settings.statuses.includes(msg.order_status)) shouldNotify = true;
-              } else if (settings.all_active) {
-                shouldNotify = true;
-              }
-
-              if (shouldNotify) {
-                // Debounce sound
-                const now = Date.now();
-                if (now - lastSoundTimeRef.current > 1000) {
-                  playAlertSound();
-                  lastSoundTimeRef.current = now;
+                let shouldNotify = false;
+                if (settings.statuses && settings.statuses.length > 0) {
+                  if (msg.order_status && settings.statuses.includes(msg.order_status)) shouldNotify = true;
+                } else if (settings.all_active) {
+                  shouldNotify = true;
                 }
-                notification.open({
-                  message: 'Новое сообщение',
-                  description: `От клиента.`,
-                  duration: 3,
-                  icon: <MessageOutlined style={{ color: '#1890ff' }} />,
-                  onClick: () => navigate('/inbox?filter=unread')
-                });
+
+                if (shouldNotify) {
+                  // Debounce sound
+                  const now = Date.now();
+                  if (now - lastSoundTimeRef.current > 1000) {
+                    playAlertSound();
+                    lastSoundTimeRef.current = now;
+                  }
+                  notification.open({
+                    message: 'Новое сообщение',
+                    description: `От клиента.`,
+                    duration: 3,
+                    icon: <MessageOutlined style={{ color: '#1890ff' }} />,
+                    onClick: () => navigate('/inbox?filter=unread')
+                  });
+                }
               }
+              console.log('🔔 Realtime Message:', msg);
             }
-            console.log('🔔 Realtime Message:', msg);
             fetchUnreadCount();
           }
         )
