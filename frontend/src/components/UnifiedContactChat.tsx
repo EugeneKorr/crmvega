@@ -35,6 +35,7 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     const [sending, setSending] = useState(false);
     const [replyTo, setReplyTo] = useState<Message | null>(null);
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+    const [highlightedMsgId, setHighlightedMsgId] = useState<string | number | null>(null);
     const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
     const lastTypingSentRef = useRef<number>(0);
 
@@ -269,6 +270,17 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
         }
     };
 
+    const handleReplyClick = (msgId: string | number) => {
+        const element = document.getElementById(`msg-${msgId}`);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setHighlightedMsgId(msgId);
+            setTimeout(() => setHighlightedMsgId(null), 2000);
+        } else {
+            antMessage.info('Сообщение не найдено в текущем окне');
+        }
+    };
+
     const handleSendMessage = async (text: string) => {
         if (!activeOrder?.id || !manager) return;
         setSending(true);
@@ -430,6 +442,8 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                             variant="client"
                             onAddReaction={handleAddReaction}
                             onReply={(m) => setReplyTo(m)}
+                            onReplyClick={handleReplyClick}
+                            highlighted={highlightedMsgId === msg.id}
                         />
                     );
                 })}
