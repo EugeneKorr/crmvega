@@ -31,15 +31,39 @@ class OrderMessagesService {
 
     // --- Client Messages ---
 
-    async getClientMessages(orderId: string | number, limit = 200, offset = 0) {
-        const { data: order, error: orderError } = await supabase
+    private async getAllRelatedLeadIds(orderId: string | number): Promise<{ leadIds: string[], contactId: number | null }> {
+        const { data: order } = await supabase
             .from('orders')
-            .select('id, main_id')
+            .select('main_id, contact_id')
             .eq('id', orderId)
             .maybeSingle();
 
-        if (orderError) throw orderError;
-        if (!order || !order.main_id) return { messages: [], total: 0, mainId: null };
+        if (!order) return { leadIds: [], contactId: null };
+
+        const leadIds = new Set<string>();
+        if (order.main_id) leadIds.add(String(order.main_id));
+
+        if (order.contact_id) {
+            const { data: contact } = await supabase
+                .from('contacts')
+                .select('id, telegram_user_id, orders(main_id)')
+                .eq('id', order.contact_id)
+                .single();
+
+            if (contact) {
+                if (contact.telegram_user_id) leadIds.add(String(contact.telegram_user_id));
+                const otherOrders = (contact as any).orders || [];
+                otherOrders.forEach((o: any) => {
+                    if (o.main_id) leadIds.add(String(o.main_id));
+                });
+            }
+        }
+        return { leadIds: Array.from(leadIds), contactId: order.contact_id || null };
+    }
+
+    async getClientMessages(orderId: string | number, limit = 200, offset = 0) {
+        const { leadIds, contactId } = await this.getAllRelatedLeadIds(orderId);
+        if (leadIds.length === 0) return { messages: [], total: 0, mainId: null };
 
         const { data: messages, count, error: messagesError } = await supabase
             .from('messages')
@@ -47,7 +71,7 @@ class OrderMessagesService {
         *,
         sender:managers!manager_id(id, name, email)
       `, { count: 'exact' })
-            .eq('main_id', order.main_id)
+            .or(leadIds.map(id => `main_id.eq.${id}`).join(','))
             .order('Created Date', { ascending: false })
             .range(offset, offset + limit - 1);
 
@@ -56,7 +80,7 @@ class OrderMessagesService {
         return {
             messages: (messages || []).reverse(),
             total: count || 0,
-            mainId: order.main_id
+            mainId: leadIds[0] || null // Return the first one as a primary reference
         };
     }
 
@@ -487,20 +511,32 @@ class OrderMessagesService {
     }
 
     async getTimeline(orderId: string | number, limit = 50, before: string | null = null) {
-        const { data: order } = await supabase.from('orders').select('main_id').eq('id', orderId).maybeSingle();
-        const mainId = order?.main_id;
+        const { leadIds } = await this.getAllRelatedLeadIds(orderId);
 
         // Fetch Client Messages
-        let clientQuery = supabase.from('messages').select('*').order('Created Date', { ascending: false }).limit(limit);
-        if (mainId) clientQuery = clientQuery.eq('main_id', mainId);
-        else clientQuery = clientQuery.eq('id', -1); // Force empty if no mainId
+        let clientQuery = supabase
+            .from('messages')
+            .select('*')
+            .order('Created Date', { ascending: false })
+            .limit(limit);
+
+        if (leadIds.length > 0) {
+            clientQuery = clientQuery.or(leadIds.map(id => `main_id.eq.${id}`).join(','));
+        } else {
+            clientQuery = clientQuery.eq('id', -1); // Force empty
+        }
 
         if (before) clientQuery = clientQuery.lt('Created Date', before);
 
         const { data: clientMsgs } = await clientQuery;
 
         // Fetch Internal Messages
-        let internalQuery = supabase.from('internal_messages').select('*').eq('order_id', orderId).order('created_at', { ascending: false }).limit(limit);
+        let internalQuery = supabase
+            .from('internal_messages')
+            .select('*')
+            .eq('order_id', orderId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
         if (before) internalQuery = internalQuery.lt('created_at', before);
 
         const { data: internalMsgs } = await internalQuery;

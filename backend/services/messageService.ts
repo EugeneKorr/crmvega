@@ -119,7 +119,7 @@ class MessageService {
             .from('orders')
             .select('id, main_id')
             .eq('contact_id', targetContactId)
-            .in('status', ['unsorted', 'new', 'negotiation', 'waiting', 'ready_to_close'])
+            .in('status', ['unsorted', 'new', 'negotiation', 'waiting', 'ready_to_close', 'accepted_anna', 'accepted_kostya', 'accepted_stas', 'accepted_lucy', 'in_progress', 'survey', 'transferred_nikita', 'transferred_val', 'transferred_ben', 'transferred_fin', 'partially_completed', 'postponed', 'moderation'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -221,7 +221,7 @@ class MessageService {
             .from('orders')
             .select('id, main_id')
             .eq('contact_id', targetContactId)
-            .in('status', ['unsorted', 'new', 'negotiation', 'waiting', 'ready_to_close'])
+            .in('status', ['unsorted', 'new', 'negotiation', 'waiting', 'ready_to_close', 'accepted_anna', 'accepted_kostya', 'accepted_stas', 'accepted_lucy', 'in_progress', 'survey', 'transferred_nikita', 'transferred_val', 'transferred_ben', 'transferred_fin', 'partially_completed', 'postponed', 'moderation'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -311,7 +311,7 @@ class MessageService {
             .from('orders')
             .select('id, main_id')
             .eq('contact_id', targetContactId)
-            .in('status', ['unsorted', 'new', 'negotiation', 'waiting', 'ready_to_close'])
+            .in('status', ['unsorted', 'new', 'negotiation', 'waiting', 'ready_to_close', 'accepted_anna', 'accepted_kostya', 'accepted_stas', 'accepted_lucy', 'in_progress', 'survey', 'transferred_nikita', 'transferred_val', 'transferred_ben', 'transferred_fin', 'partially_completed', 'postponed', 'moderation'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
