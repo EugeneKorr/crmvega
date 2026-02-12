@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import json5 from 'json5';
+import { jsonrepair } from 'jsonrepair';
 
 /**
  * Middleware to parse bodies that standard express.json() fails on.
@@ -7,9 +8,8 @@ import json5 from 'json5';
  * - Unquoted keys ({ key: "value" })
  * - Trailing commas
  * - Single quotes
- * 
- * It runs AFTER body-parser (express.json) has failed or ignored the body.
- * NOTE: express.json() usually captures the stream. We need to ensure we can read it.
+ * - Unescaped double quotes inside string values (e.g. { "msg": "Hello "world"" })
+ * - Unquoted booleans (yes/no/да/нет)
  */
 const json5Parser = (req: Request, res: Response, next: NextFunction) => {
     // If body is already parsed (object), skip
@@ -19,33 +19,71 @@ const json5Parser = (req: Request, res: Response, next: NextFunction) => {
 
     // If body is string (e.g. from express.text()), try to parse it
     if (typeof req.body === 'string' && req.body.trim().length > 0) {
+        let currentBody = req.body;
+
         try {
-            // Direct assignment to req.body is allowed in Express
-            req.body = json5.parse(req.body);
-            // console.log('[JSON5] Successfully parsed invalid JSON body');
+            // 1. Try standard JSON5 parse first
+            req.body = json5.parse(currentBody);
             return next();
         } catch (err) {
-            // If strict JSON5 fails, we can't do much more.
-            // But maybe check if it's the specific "no" unquoted bool issue?
-            // JSON5 handles unquoted alphanumeric keys, but unquoted values like `no` might be seen as strings or variables?
-            // JSON5 spec: unquoted values are NOT allowed unless they are true/false/null/Infinity/NaN. 
-            // Bubble sends `key: no` -> This is INVALID even in JSON5.
+            // Parsing failed. Let's try a series of fixes in order.
 
-            // Let's try a quick patch for the "no/yes" boolean issue specifically, then retry JSON5
+            // 2. Fix unescaped quotes
             try {
-                const patched = (req.body as string)
-                    .replace(/:\s*no\b/g, ': false')
-                    .replace(/:\s*yes\b/g, ': true')
-                    .replace(/:\s*нет\b/g, ': "нет"')
-                    .replace(/:\s*да\b/g, ': "да"');
+                // Heuristic: Escape quotes that are NOT structural
+                currentBody = currentBody.replace(/(?<!\\)"/g, (match: string, offset: number, fullStr: string) => {
+                    const before = fullStr.substring(0, offset);
+                    const after = fullStr.substring(offset + 1);
 
-                req.body = json5.parse(patched);
-                console.log('[JSON5] Parsed after simple boolean patch');
+                    // Check 1: Start of key (preceded by { or , or [ )
+                    if (/[{\[,]\s*$/.test(before)) return match;
+                    // Check 2: End of key (followed by :)
+                    if (/^\s*:/.test(after)) return match;
+                    // Check 3: Start of value (preceded by :)
+                    if (/:\s*$/.test(before)) return match;
+                    // Check 4: End of value (followed by , or } or ])
+                    if (/^\s*[,}\]]/.test(after)) return match;
+
+                    // If none of the above, it's an inner quote. Escape it.
+                    return '\\"';
+                });
+
+                // Try parsing after quote fix
+                req.body = json5.parse(currentBody);
                 return next();
-            } catch (err2: any) {
-                console.error('[JSON5] Formatting error:', err2.message);
-                // Don't error out here, let the next handlers deal with raw body or error
-                return next();
+            } catch (err2) {
+                // 3. Fix unquoted booleans (yes/no/да/нет)
+                // We apply this ON TOP of the quote fix (currentBody)
+                try {
+                    currentBody = currentBody
+                        .replace(/:\s*no\b/g, ': false')
+                        .replace(/:\s*yes\b/g, ': true')
+                        .replace(/:\s*нет\b/g, ': "нет"')
+                        .replace(/:\s*да\b/g, ': "да"');
+
+                    req.body = json5.parse(currentBody);
+                    return next();
+                } catch (err3) {
+                    // 4. Final resort: jsonrepair
+                    // Use the potentially partially fixed body, or start fresh?
+                    // Usually currentBody is best as it has our quote fixes which jsonrepair might not handle well.
+                    try {
+                        const repaired = jsonrepair(currentBody);
+                        req.body = JSON.parse(repaired);
+                        return next();
+                    } catch (err4) {
+                        try {
+                            // Try jsonrepair on ORIGINAL body as fallback?
+                            const repairedOriginal = jsonrepair(req.body);
+                            req.body = JSON.parse(repairedOriginal);
+                            return next();
+                        } catch (err5: any) {
+                            console.error('[JSON5] All parsing attempts failed.');
+                            // Proceed with raw body
+                            return next();
+                        }
+                    }
+                }
             }
         }
     }
