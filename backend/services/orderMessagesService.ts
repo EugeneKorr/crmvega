@@ -376,7 +376,7 @@ class OrderMessagesService {
     }
 
     async markClientMessagesRead(orderId: string | number) {
-        const { data: order } = await supabase.from('orders').select('main_id').eq('id', orderId).maybeSingle();
+        const order = await this.resolveOrderId(orderId);
         if (!order || !order.main_id) return;
 
         await supabase
