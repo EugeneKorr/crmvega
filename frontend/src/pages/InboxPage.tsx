@@ -9,6 +9,7 @@ import {
     List,
     Input,
     Avatar,
+    Badge,
     Button,
     Spin,
     Typography,
@@ -41,7 +42,11 @@ const InboxPage: React.FC = () => {
     const [selectedContact, setSelectedContact] = useState<ExtendedInboxContact | null>(null);
     const [activeOrder, setActiveOrder] = useState<Order | null>(null);
     const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const PAGE_SIZE = 50;
 
     const [showUnreadOnly, setShowUnreadOnly] = useState(false);
     const [filterStages, setFilterStages] = useState<string[]>([]);
@@ -69,7 +74,9 @@ const InboxPage: React.FC = () => {
 
     // Initial load
     useEffect(() => {
-        fetchContacts();
+        setOffset(0);
+        setHasMore(true);
+        fetchContacts(false, 0);
     }, [showUnreadOnly, filterStages, searchQuery]);
 
     // Supabase Realtime Subscription
@@ -121,18 +128,41 @@ const InboxPage: React.FC = () => {
         };
     }, [manager]);
 
-    const fetchContacts = async (isBackground = false) => {
-        if (!isBackground) setIsLoadingContacts(true);
+    const fetchContacts = async (isBackground = false, currentOffset = 0, isLoadMore = false) => {
+        if (!isBackground && !isLoadMore) setIsLoadingContacts(true);
+        if (isLoadMore) setIsLoadingMore(true);
+
         try {
-            const params: any = {};
+            const params: any = {
+                limit: PAGE_SIZE,
+                offset: currentOffset,
+            };
             if (showUnreadOnly) params.unread = true;
             if (searchQuery) params.search = searchQuery;
             if (filterStages.length > 0) params.statuses = filterStages.join(',');
 
             const data = await contactsAPI.getSummary(params);
-            setContacts(data);
 
-            // If we have contactId in URL, select it
+            if (isLoadMore) {
+                setContacts(prev => [...prev, ...data]);
+            } else if (!isBackground) {
+                setContacts(data);
+            } else {
+                // Background refresh for existing list: 
+                // We should only update if we are on the first page to avoid jumping
+                if (currentOffset === 0) {
+                    setContacts(prev => {
+                        const newContacts = [...data];
+                        // Preserve contacts not in the first page if needed, 
+                        // but usually background refresh is only for the visible top.
+                        return newContacts;
+                    });
+                }
+            }
+
+            setHasMore(data.length === PAGE_SIZE);
+
+            // If we have contactId in URL and no selection, select it
             const contactIdFromUrl = searchParams.get('contactId');
             if (contactIdFromUrl && !selectedContactRef.current) {
                 const contact = data.find((c: any) => String(c.id) === contactIdFromUrl);
@@ -145,6 +175,21 @@ const InboxPage: React.FC = () => {
             if (!isBackground) antMessage.error('Ошибка загрузки контактов');
         } finally {
             if (!isBackground) setIsLoadingContacts(false);
+            if (isLoadMore) setIsLoadingMore(false);
+        }
+    };
+
+    const handleLoadMore = () => {
+        if (!hasMore || isLoadingMore || isLoadingContacts) return;
+        const nextOffset = offset + PAGE_SIZE;
+        setOffset(nextOffset);
+        fetchContacts(false, nextOffset, true);
+    };
+
+    const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+        if (scrollHeight - scrollTop <= clientHeight + 50) {
+            handleLoadMore();
         }
     };
 
@@ -199,7 +244,7 @@ const InboxPage: React.FC = () => {
                         flexShrink: 0
                     }}
                 >
-                    <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
+                    <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: 12 }}>
                         <Input
                             prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
                             placeholder="Поиск контактов..."
@@ -207,59 +252,102 @@ const InboxPage: React.FC = () => {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             allowClear
                         />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <Button
+                                type={!showUnreadOnly ? "primary" : "default"}
+                                size="small"
+                                shape="round"
+                                onClick={() => {
+                                    setShowUnreadOnly(false);
+                                    setSearchParams(curr => { curr.delete('filter'); return curr; });
+                                }}
+                            >
+                                Все
+                            </Button>
+                            <Button
+                                type={showUnreadOnly ? "primary" : "default"}
+                                size="small"
+                                shape="round"
+                                danger={showUnreadOnly}
+                                onClick={() => {
+                                    setShowUnreadOnly(true);
+                                    setSearchParams(curr => { curr.set('filter', 'unread'); return curr; });
+                                }}
+                            >
+                                Непрочитанные
+                            </Button>
+                        </div>
                     </div>
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
-                        {isLoadingContacts ? (
+                    <div
+                        style={{ flex: 1, overflowY: 'auto' }}
+                        onScroll={handleSidebarScroll}
+                    >
+                        {isLoadingContacts && contacts.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '24px' }}><Spin /></div>
                         ) : (
-                            <List
-                                dataSource={contacts}
-                                locale={{ emptyText: <Empty description="Контакты не найдены" /> }}
-                                renderItem={(contact) => (
-                                    <List.Item
-                                        onClick={() => selectContact(contact)}
-                                        style={{
-                                            padding: '12px 16px',
-                                            cursor: 'pointer',
-                                            background: selectedContact?.id === contact.id ? '#f0faff' : 'transparent',
-                                            borderLeft: selectedContact?.id === contact.id ? '3px solid #1890ff' : '3px solid transparent',
-                                            transition: 'all 0.3s'
-                                        }}
-                                        className="contact-item"
-                                    >
-                                        <List.Item.Meta
-                                            avatar={
-                                                <Avatar icon={<UserOutlined />} src={contact.avatar_url} />
-                                            }
-                                            title={
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <Text strong style={{ fontSize: 14 }}>{contact.name || 'Без имени'}</Text>
-                                                    {contact.unread_count ? (
-                                                        <div style={{
-                                                            background: '#ff4d4f',
-                                                            color: '#fff',
-                                                            borderRadius: '10px',
-                                                            padding: '0 6px',
-                                                            fontSize: '11px',
-                                                            minWidth: '20px',
-                                                            textAlign: 'center'
+                            <>
+                                <List
+                                    dataSource={contacts}
+                                    locale={{ emptyText: <Empty description="Контакты не найдены" /> }}
+                                    renderItem={(contact) => (
+                                        <List.Item
+                                            onClick={() => selectContact(contact)}
+                                            style={{
+                                                padding: '12px 16px',
+                                                cursor: 'pointer',
+                                                background: selectedContact?.id === contact.id ? '#f0faff' : 'transparent',
+                                                borderLeft: selectedContact?.id === contact.id ? '3px solid #1890ff' : '3px solid transparent',
+                                                transition: 'all 0.3s'
+                                            }}
+                                            className="contact-item"
+                                        >
+                                            <List.Item.Meta
+                                                avatar={
+                                                    <Badge count={contact.unread_count || 0} size="small" offset={[0, 32]}>
+                                                        <Avatar icon={<UserOutlined />} src={contact.avatar_url} />
+                                                    </Badge>
+                                                }
+                                                title={
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <Text strong style={{
+                                                            fontSize: 14,
+                                                            color: contact.unread_count && contact.unread_count > 0 ? '#1890ff' : 'inherit'
                                                         }}>
-                                                            {contact.unread_count}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            }
-                                            description={
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                                                    <Text type="secondary" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
-                                                        {contact.last_message?.content || contact.phone || 'Нет сообщений'}
-                                                    </Text>
-                                                </div>
-                                            }
-                                        />
-                                    </List.Item>
-                                )}
-                            />
+                                                            {contact.name || 'Без имени'}
+                                                        </Text>
+                                                        {contact.last_message && contact.last_message['Created Date'] && (
+                                                            <Text type="secondary" style={{ fontSize: 10 }}>
+                                                                {new Date(contact.last_message['Created Date']).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </Text>
+                                                        )}
+                                                    </div>
+                                                }
+                                                description={
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                        <Text type="secondary" style={{
+                                                            fontSize: 12,
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            maxWidth: 220,
+                                                            fontWeight: contact.unread_count && contact.unread_count > 0 ? 600 : 400,
+                                                            color: contact.unread_count && contact.unread_count > 0 ? '#262626' : undefined
+                                                        }}>
+                                                            {contact.last_message?.content || contact.phone || 'Нет сообщений'}
+                                                        </Text>
+                                                        {contact.last_order_status && (
+                                                            <div style={{ fontSize: 10, opacity: 0.7 }}>
+                                                                #{contact.latest_order_id} • {contact.last_order_status}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                }
+                                            />
+                                        </List.Item>
+                                    )}
+                                />
+                                {isLoadingMore && <div style={{ textAlign: 'center', padding: '12px' }}><Spin size="small" /></div>}
+                            </>
                         )}
                     </div>
                 </div>

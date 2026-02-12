@@ -70,8 +70,8 @@ class ContactService {
         return { contacts: contactsWithStats };
     }
 
-    async getSummary(params: { limit?: number; offset?: number; search?: string }) {
-        const { limit = 50, offset = 0, search } = params;
+    async getSummary(params: { limit?: number; offset?: number; search?: string, unread?: boolean, statuses?: string }) {
+        const { limit = 50, offset = 0, search, unread, statuses } = params;
         const limitNum = Number(limit);
         const offsetNum = Number(offset);
 
@@ -148,9 +148,15 @@ class ContactService {
             unreadMap[String(item.main_id)] = item.unread_count;
         });
 
-        const contactsWithMessages = contacts.map(contact => {
+        let contactsWithMessages = contacts.map(contact => {
             const orders = ordersByContact[contact.id] || [];
-            const latestOrder = orders[0];
+
+            // Filter orders by status if provided
+            const filteredOrders = statuses
+                ? orders.filter(o => statuses.split(',').includes(o.status))
+                : orders;
+
+            const latestOrder = filteredOrders[0] || orders[0];
 
             let lastMessage = null;
             let lastMessageTime: number | null = null;
@@ -189,6 +195,11 @@ class ContactService {
                 unread_count: orders.reduce((sum, o) => sum + (unreadMap[String(o.main_id)] || 0), 0)
             };
         });
+
+        // Apply global unread filter if requested
+        if (unread) {
+            contactsWithMessages = contactsWithMessages.filter(c => (c.unread_count || 0) > 0);
+        }
 
         return contactsWithMessages.sort((a, b) => {
             const tA = new Date(a.last_active || 0).getTime();

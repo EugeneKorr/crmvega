@@ -26,7 +26,7 @@ export const contactsAPI = {
         await api.delete(`/contacts/${id}`);
     },
 
-    getSummary: async (params?: { limit?: number; offset?: number; search?: string }): Promise<InboxContact[]> => {
+    getSummary: async (params?: { limit?: number; offset?: number; search?: string, unread?: boolean, statuses?: string }): Promise<InboxContact[]> => {
         const paramsWithCache = { ...params, _t: Date.now() };
         const response = await api.get('/contacts/summary', { params: paramsWithCache });
         return response.data;

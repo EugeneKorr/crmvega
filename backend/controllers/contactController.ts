@@ -20,11 +20,13 @@ class ContactController {
 
     async getSummary(req: Request, res: Response) {
         try {
-            const { limit, offset, search } = req.query;
+            const { limit, offset, search, unread, statuses } = req.query;
             const result = await contactService.getSummary({
                 limit: limit ? parseInt(limit as string) : undefined,
                 offset: offset ? parseInt(offset as string) : undefined,
-                search: search as string
+                search: search as string,
+                unread: unread === 'true',
+                statuses: statuses as string
             });
             res.json(result);
         } catch (error: any) {
