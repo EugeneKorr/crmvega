@@ -115,11 +115,29 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                 (payload) => {
                     const newMessage = payload.new as Message;
                     setMessages(prev => {
-                        // Check if we already have this message (via API response)
+                        // Check if we already have this message (by ID)
                         if (prev.some(m => String(m.id) === String(newMessage.id))) return prev;
 
-                        // If not found by ID, purely push it. 
-                        // Note: optimistics are replaced by API response, not here usually.
+                        // Deduplication for optimistic updates (Scenario: Socket event faster than API response)
+                        if (manager && Number(newMessage.manager_id) === Number(manager.id)) {
+                            // Find a pending message that matches this new message
+                            const pendingMatchIndex = prev.findIndex(m =>
+                                m.status === 'pending' &&
+                                Number(m.manager_id) === Number(manager.id) &&
+                                m.message_type === newMessage.message_type &&
+                                (m.message_type === 'text' ? m.content === newMessage.content : true)
+                            );
+
+                            if (pendingMatchIndex !== -1) {
+                                // Match found! Replace the pending message with the real one
+                                const newArr = [...prev];
+                                // Use the real message but keep sender info
+                                newArr[pendingMatchIndex] = { ...newMessage, sender: manager };
+                                return newArr;
+                            }
+                        }
+
+                        // If no optimistic match, add new message
                         return [...prev, newMessage];
                     });
 
