@@ -87,15 +87,16 @@ const OrderDetailPage: React.FC = () => {
     if (!id) return;
     setLoadingHistory(true);
     try {
-      const { messages } = await orderMessagesAPI.getInternalMessages(parseInt(id), { limit: 100 });
+      const { messages } = await orderMessagesAPI.getInternalMessages(id as any, { limit: 100 });
       // Filter for system messages or messages that look like system ones
       setHistory(messages.filter((m: any) =>
         m.attachment_type === 'system' ||
         m.is_system === true ||
         ['✨', '🔄', '💰', '💱'].some(emoji => m.content.includes(emoji))
       ));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching history:', error);
+      message.error(error.response?.data?.error || 'Ошибка загрузки истории');
     } finally {
       setLoadingHistory(false);
     }
@@ -129,7 +130,7 @@ const OrderDetailPage: React.FC = () => {
     if (!id || !manager || !order) return;
     try {
       await notesAPI.create({
-        order_id: order.id, // Notes use internal ID
+        order_id: id as any, // Notes use internal ID or uuid string depending on API expectation
         manager_id: manager.id,
         content: values.content,
         priority: values.priority || 'info',
@@ -147,7 +148,7 @@ const OrderDetailPage: React.FC = () => {
   const handleStatusChange = async (newStatus: any) => {
     try {
       await updateStatus(newStatus);
-      fetchHistory(); // Refresh history on status change
+      await fetchHistory(); // Refresh history on status change
     } catch (error: any) {
       // Error handled in hook or here
     }
