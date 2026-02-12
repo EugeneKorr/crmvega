@@ -31,14 +31,23 @@ class OrderMessagesService {
 
     // --- Client Messages ---
 
-    private async getAllRelatedLeadIds(orderId: string | number): Promise<{ leadIds: string[], contactId: number | null }> {
+    private async resolveOrderId(orderId: string | number): Promise<{ id: number, main_id: string | null, contact_id: number | null } | null> {
+        const numericId = parseInt(String(orderId));
+        let lookupField = 'id';
+        if (numericId > 1000000000) lookupField = 'main_id';
+
         const { data: order } = await supabase
             .from('orders')
-            .select('main_id, contact_id')
-            .eq('id', orderId)
+            .select('id, main_id, contact_id')
+            .eq(lookupField, orderId)
             .maybeSingle();
 
-        if (!order) return { leadIds: [], contactId: null };
+        return order || null;
+    }
+
+    private async getAllRelatedLeadIds(orderId: string | number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null }> {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) return { leadIds: [], contactId: null, internalId: null };
 
         const leadIds = new Set<string>();
         if (order.main_id) leadIds.add(String(order.main_id));
@@ -58,7 +67,11 @@ class OrderMessagesService {
                 });
             }
         }
-        return { leadIds: Array.from(leadIds), contactId: order.contact_id || null };
+        return {
+            leadIds: Array.from(leadIds),
+            contactId: order.contact_id || null,
+            internalId: order.id
+        };
     }
 
     async getClientMessages(orderId: string | number, limit = 200, offset = 0) {
@@ -511,7 +524,8 @@ class OrderMessagesService {
     }
 
     async getTimeline(orderId: string | number, limit = 50, before: string | null = null) {
-        const { leadIds } = await this.getAllRelatedLeadIds(orderId);
+        const { leadIds, internalId } = await this.getAllRelatedLeadIds(orderId);
+        if (!internalId) return { messages: [], meta: { total_fetched: 0, limit, has_more: false } };
 
         // Fetch Client Messages
         let clientQuery = supabase
@@ -534,7 +548,7 @@ class OrderMessagesService {
         let internalQuery = supabase
             .from('internal_messages')
             .select('*')
-            .eq('order_id', orderId)
+            .eq('order_id', internalId) // Use internal numeric ID
             .order('created_at', { ascending: false })
             .limit(limit);
         if (before) internalQuery = internalQuery.lt('created_at', before);
@@ -550,7 +564,7 @@ class OrderMessagesService {
                 sort_date: m['Created Date'] || m.created_at
             })),
             ...(internalMsgs || [])
-                .filter((m: any) => String(m.order_id) === String(orderId)) // All internal (notes & system) stay in their order
+                .filter((m: any) => m.order_id === internalId) // All internal (notes & system) stay in their order
                 .map((m: any) => ({
                     ...m,
                     source_type: 'internal',
