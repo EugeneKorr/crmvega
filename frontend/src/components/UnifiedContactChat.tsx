@@ -43,13 +43,25 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const previousScrollHeightRef = useRef<number>(0);
     const isInitialLoadRef = useRef<boolean>(true);
+    const isAutoScrollingRef = useRef<boolean>(false);
 
     const scrollToBottom = useCallback((smooth = false) => {
+        if (!messagesContainerRef.current) return;
+        isAutoScrollingRef.current = true;
+
+        const container = messagesContainerRef.current;
+        const targetScrollTop = container.scrollHeight - container.clientHeight;
+
+        if (smooth) {
+            container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+        } else {
+            container.scrollTop = targetScrollTop;
+        }
+
+        // Unlock after animation
         setTimeout(() => {
-            if (messagesEndRef.current) {
-                messagesEndRef.current.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
-            }
-        }, 100);
+            isAutoScrollingRef.current = false;
+        }, smooth ? 1000 : 200);
     }, []);
 
     const fetchMessages = async (loadMore = false) => {
@@ -249,8 +261,10 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
     };
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (isAutoScrollingRef.current) return; // Prevent loading more while auto-scrolling to bottom
+
         const container = e.currentTarget;
-        if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages) {
+        if (container.scrollTop < 100 && hasMore && !loadingMore && !isLoadingMessages && messages.length > 0) {
             fetchMessages(true);
         }
     };

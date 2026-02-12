@@ -142,11 +142,12 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps & {
             return {
                 ...baseStyles,
                 opacity: isPending ? 0.6 : 1,
-                transition: 'all 0.3s ease',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 linkColor: isRight ? 'rgba(255,255,255,0.9)' : '#1890ff',
-                boxShadow: highlighted ? '0 0 12px 4px rgba(24, 144, 255, 0.5)' : '0 1px 2px rgba(0,0,0,0.05)',
-                transform: highlighted ? 'scale(1.02)' : 'scale(1)',
-                zIndex: highlighted ? 10 : 1
+                boxShadow: highlighted ? '0 0 0 4px rgba(24, 144, 255, 0.3), 0 0 20px 8px rgba(24, 144, 255, 0.5)' : '0 1px 2px rgba(0,0,0,0.05)',
+                transform: highlighted ? 'scale(1.03)' : 'scale(1)',
+                zIndex: highlighted ? 10 : 1,
+                animation: highlighted ? 'pulse-glow 2s infinite' : 'none'
             };
         };
 
@@ -420,12 +421,20 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps & {
                 )}
                 <style>{`
                 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                @keyframes pulse-glow {
+                    0% { box-shadow: 0 0 0 4px rgba(24, 144, 255, 0.3), 0 0 20px 8px rgba(24, 144, 255, 0.5); }
+                    50% { box-shadow: 0 0 0 6px rgba(24, 144, 255, 0.4), 0 0 30px 12px rgba(24, 144, 255, 0.6); }
+                    100% { box-shadow: 0 0 0 4px rgba(24, 144, 255, 0.3), 0 0 20px 8px rgba(24, 144, 255, 0.5); }
+                }
                 .message-bubble-container:hover .message-hover-actions {
                     display: flex !important;
                 }
                 .message-bubble-container:hover .message-menu-trigger {
                     opacity: 1 !important;
                     background: #f0f0f0 !important;
+                }
+                .message-bubble-container.highlighted {
+                    z-index: 10;
                 }
             `}</style>
             </div>
