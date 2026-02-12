@@ -6,7 +6,6 @@ AS $$
 BEGIN
     UPDATE messages
     SET is_read = true
-    WHERE is_read = false
-    AND author_type IN ('user', 'User', 'bubbleUser', 'customer', 'client', 'Client', 'Клиент', 'Telegram', 'bot', 'бот');
+    WHERE is_read = false;
 END;
 $$;
