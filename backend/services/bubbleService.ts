@@ -486,7 +486,7 @@ class BubbleService {
 
     async processNoteToOrder(main_id: any, note: string) {
         const { data: order } = await supabase.from('orders')
-            .select('id, manager_id')
+            .select('id, manager_id, contact_id')
             .eq('main_id', main_id)
             .maybeSingle();
 
@@ -495,7 +495,8 @@ class BubbleService {
         const systemContent = `📝 Заметка: ${note} ${new Date().toLocaleString('ru-RU')}`;
         const finalManagerId = order.manager_id || 3;
 
-        const { data: sysMsg, error } = await supabase.from('internal_messages').insert({
+        // 1. Create Internal Message (Timeline)
+        const { data: sysMsg, error: msgError } = await supabase.from('internal_messages').insert({
             order_id: order.id,
             content: systemContent,
             is_read: false,
@@ -503,9 +504,25 @@ class BubbleService {
             sender_id: finalManagerId
         }).select().single();
 
-        if (error) throw error;
+        if (msgError) console.error('[Bubble Service] Internal message error:', msgError);
 
-        return { order_id: order.id, message_id: sysMsg.id };
+        // 2. Create Note Entry (Notes Tab)
+        const { data: noteData, error: noteError } = await supabase.from('notes').insert({
+            contact_id: order.contact_id,
+            order_id: order.id,
+            manager_id: finalManagerId,
+            content: note,
+            priority: 'info'
+        }).select().single();
+
+        if (noteError) console.error('[Bubble Service] Note entry error:', noteError);
+
+        return {
+            order_id: order.id,
+            message_id: sysMsg?.id,
+            note_id: noteData?.id,
+            success: !!noteData
+        };
     }
 }
 
