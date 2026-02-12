@@ -17,6 +17,7 @@ import {
   Col,
   Tabs,
   Grid,
+  Spin,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -30,10 +31,11 @@ import {
   MessageOutlined,
   InfoCircleOutlined,
   TagOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Order, Note, ORDER_STATUSES, NOTE_PRIORITIES } from '../types';
-import { notesAPI } from '../services/api';
+import { Order, Note, ORDER_STATUSES, NOTE_PRIORITIES, InternalMessage } from '../types';
+import { notesAPI, orderMessagesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrder } from '../hooks/useOrder';
 import OrderChat from '../components/OrderChat';
@@ -50,6 +52,8 @@ const OrderDetailPage: React.FC = () => {
   const { onlineUsers, viewingOrder } = usePresence();
   // Notes state remains local for now
   const [notes, setNotes] = useState<Note[]>([]);
+  const [history, setHistory] = useState<InternalMessage[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // USE ORDER HOOK
   const { order, loading, updateOrder, updateStatus, refreshOrder } = useOrder(id);
@@ -61,7 +65,7 @@ const OrderDetailPage: React.FC = () => {
   const [noteForm] = Form.useForm();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
-  const [activeInfoTab, setActiveInfoTab] = useState<'info' | 'notes' | 'chat'>('chat');
+  const [activeInfoTab, setActiveInfoTab] = useState<'info' | 'notes' | 'chat' | 'history'>('chat');
 
   // Reset tab to info if switching to desktop while in chat tab
   useEffect(() => {
@@ -73,10 +77,29 @@ const OrderDetailPage: React.FC = () => {
   useEffect(() => {
     if (id) {
       fetchNotes();
+      fetchHistory();
       viewingOrder(id);
       return () => viewingOrder(null);
     }
   }, [id]);
+
+  const fetchHistory = async () => {
+    if (!id) return;
+    setLoadingHistory(true);
+    try {
+      const { messages } = await orderMessagesAPI.getInternalMessages(parseInt(id), { limit: 100 });
+      // Filter for system messages or messages that look like system ones
+      setHistory(messages.filter((m: any) =>
+        m.attachment_type === 'system' ||
+        m.is_system === true ||
+        ['✨', '🔄', '💰', '💱'].some(emoji => m.content.includes(emoji))
+      ));
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   // Update form when order loads
   useEffect(() => {
@@ -115,6 +138,7 @@ const OrderDetailPage: React.FC = () => {
       setIsNoteModalVisible(false);
       noteForm.resetFields();
       fetchNotes();
+      fetchHistory(); // Creating a note is also kind of history
     } catch (error: any) {
       message.error(error.response?.data?.error || 'Ошибка создания заметки');
     }
@@ -123,6 +147,7 @@ const OrderDetailPage: React.FC = () => {
   const handleStatusChange = async (newStatus: any) => {
     try {
       await updateStatus(newStatus);
+      fetchHistory(); // Refresh history on status change
     } catch (error: any) {
       // Error handled in hook or here
     }
@@ -583,7 +608,7 @@ const OrderDetailPage: React.FC = () => {
           {isMobile ? (
             <Tabs
               activeKey={activeInfoTab}
-              onChange={(key) => setActiveInfoTab(key as 'info' | 'notes' | 'chat')}
+              onChange={(key) => setActiveInfoTab(key as 'info' | 'notes' | 'chat' | 'history')}
               type="card"
               items={[
                 {
@@ -653,6 +678,35 @@ const OrderDetailPage: React.FC = () => {
                   )
                 },
                 {
+                  key: 'history',
+                  label: <span><HistoryOutlined /> История</span>,
+                  children: (
+                    <Card style={{ borderRadius: '0 0 12px 12px' }} bodyStyle={{ padding: 12 }}>
+                      {loadingHistory ? (
+                        <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
+                      ) : history.length === 0 ? (
+                        <Empty description="История пуста" />
+                      ) : (
+                        <List
+                          dataSource={history}
+                          renderItem={(item: any) => (
+                            <div style={{
+                              padding: '8px 0',
+                              borderBottom: '1px solid #f0f0f0',
+                              fontSize: 13
+                            }}>
+                              <div style={{ marginBottom: 4 }}>{item.content}</div>
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                {new Date(item.created_at).toLocaleString('ru-RU')}
+                              </Text>
+                            </div>
+                          )}
+                        />
+                      )}
+                    </Card>
+                  )
+                },
+                {
                   key: 'chat',
                   label: <span><MessageOutlined /> Чат</span>,
                   children: (
@@ -690,7 +744,7 @@ const OrderDetailPage: React.FC = () => {
             >
               <Tabs
                 activeKey={activeInfoTab}
-                onChange={(key) => setActiveInfoTab(key as 'info' | 'notes')}
+                onChange={(key) => setActiveInfoTab(key as 'info' | 'notes' | 'history')}
                 style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
                 tabBarStyle={{ padding: '0 16px', margin: 0, position: 'sticky', top: 0, zIndex: 10, background: '#fff' }}
                 items={[
@@ -764,6 +818,47 @@ const OrderDetailPage: React.FC = () => {
                                     </Text>
                                   </div>
                                 )}
+                              </div>
+                            )}
+                          />
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'history',
+                    label: (
+                      <span>
+                        <HistoryOutlined /> История
+                      </span>
+                    ),
+                    children: (
+                      <div style={{ padding: 16, height: '100%', overflowY: 'auto' }}>
+                        {loadingHistory ? (
+                          <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
+                        ) : history.length === 0 ? (
+                          <Empty description="История взаимодействий пуста" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                        ) : (
+                          <List
+                            dataSource={history}
+                            renderItem={(item: any) => (
+                              <div style={{
+                                padding: '12px',
+                                background: '#f9f9f9',
+                                borderRadius: 8,
+                                marginBottom: 8,
+                                borderLeft: '3px solid #d9d9d9',
+                                fontSize: 13
+                              }}>
+                                <div style={{ marginBottom: 4 }}>{item.content}</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>
+                                    {item.sender?.name || 'Система'}
+                                  </Text>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>
+                                    {new Date(item.created_at).toLocaleString('ru-RU')}
+                                  </Text>
+                                </div>
                               </div>
                             )}
                           />

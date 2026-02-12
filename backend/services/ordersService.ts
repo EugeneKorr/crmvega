@@ -434,8 +434,8 @@ class OrdersService {
 
             // System Message
             const managerName = manager.name || manager.email;
-            const timestamp = new Date().toLocaleString('ru-RU');
-            const systemContent = `✨ ${managerName} создал заявку ${timestamp}`;
+            const timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const systemContent = `✨ ${managerName} создал заявку [${timeStr}]`;
             await this._createSystemMessage(data.id, data.main_id, manager.id, systemContent);
 
         } catch (e) {
@@ -454,10 +454,12 @@ class OrdersService {
 
         // Other fields (System Messages)
         if (updateData.SumInput !== undefined && parseFloat(updateData.SumInput) !== parseFloat(oldOrder.SumInput || 0)) {
-            await this._createSystemMessage(data.id, data.main_id, manager.id, `💰 ${managerName} изменил сумму: ${updateData.SumInput} (было: ${oldOrder.SumInput || 0})`);
+            const timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            await this._createSystemMessage(data.id, data.main_id, manager.id, `💰 ${managerName} изменил сумму: ${updateData.SumInput} [было: ${oldOrder.SumInput || 0}] (${timeStr})`);
         }
         if (updateData.CurrPair1 && updateData.CurrPair1 !== oldOrder.CurrPair1) {
-            await this._createSystemMessage(data.id, data.main_id, manager.id, `💱 ${managerName} изменил валюту отдачи: ${updateData.CurrPair1} (было: ${oldOrder.CurrPair1 || '-'})`);
+            const timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            await this._createSystemMessage(data.id, data.main_id, manager.id, `💱 ${managerName} изменил валюту отдачи: ${updateData.CurrPair1} [было: ${oldOrder.CurrPair1 || '-'}] (${timeStr})`);
         }
     }
 
@@ -465,8 +467,9 @@ class OrdersService {
         const oldLabel = ORDER_STATUSES[oldOrder.status]?.label || oldOrder.status;
         const newLabel = ORDER_STATUSES[newOrder.status]?.label || newOrder.status;
         const managerName = manager.name || manager.email;
+        const timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
-        await this._createSystemMessage(newOrder.id, newOrder.main_id, manager.id, `🔄 ${managerName} смена этапа: ${newLabel} (было: ${oldLabel})`);
+        await this._createSystemMessage(newOrder.id, newOrder.main_id, manager.id, `🔄 ${managerName} смена этапа: ${newLabel} (было: ${oldLabel}) [${timeStr}]`);
 
         runAutomations('order_status_changed', newOrder).catch(console.error);
 
