@@ -22,7 +22,7 @@ interface BubbleMessagePayload {
     timestamp?: string;
     'Modified Date'?: string;
     'Created By'?: string;
-    author_amojo_id?: string;
+    author_id?: number | string;
     message_id_amo?: string;
     user?: string;
     reply_to_mess_id_tg?: string | number;
@@ -66,7 +66,7 @@ class BubbleService {
         const {
             lead_id, content, 'Created Date': createdDate, author_type, message_type,
             message_id_tg, timestamp, 'Modified Date': modifiedDate, 'Created By': createdBy,
-            author_amojo_id, message_id_amo, user, reply_to_mess_id_tg, caption,
+            author_id, message_id_amo, user, reply_to_mess_id_tg, caption,
             order_status, main_ID, telegram_user_id, reactions, file_url, file_name
         } = payload;
 
@@ -146,7 +146,7 @@ class BubbleService {
             timestamp: this.cleanNull(timestamp),
             'Modified Date': modifiedDate || new Date().toISOString(),
             'Created By': this.cleanNull(createdBy),
-            author_amojo_id: this.cleanNull(author_amojo_id),
+            author_id: this.parseNumeric(author_id),
             message_id_amo: this.cleanNull(message_id_amo),
             user: this.cleanNull(user),
             reply_to_mess_id_tg: this.sanitizeNumeric(reply_to_mess_id_tg),

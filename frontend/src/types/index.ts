@@ -29,7 +29,7 @@ export interface Message {
   // Sender info
   sender?: Manager;
   manager_id?: number;
-  author_amojo_id?: string;
+  author_id?: number;
   message_id_amo?: string;
   user?: string;
   display_author?: string;
