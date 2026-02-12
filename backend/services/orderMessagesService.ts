@@ -544,7 +544,14 @@ class OrderMessagesService {
         // Normalize and Merge
         const allMessages = [
             ...(clientMsgs || []).map((m: any) => ({ ...m, type: 'client', date: m['Created Date'] || m.created_at, sort_date: m['Created Date'] || m.created_at })),
-            ...(internalMsgs || []).map((m: any) => ({ ...m, type: 'internal', date: m.created_at, sort_date: m.created_at, message_type: 'text' })) // Internal default text
+            ...(internalMsgs || [])
+                .filter((m: any) => {
+                    // Always show if not system (actual chat messages/notes)
+                    if (m.attachment_type !== 'system') return true;
+                    // For system messages (status changes, etc), only show if they belong to THIS order
+                    return String(m.order_id) === String(orderId);
+                })
+                .map((m: any) => ({ ...m, type: 'internal', date: m.created_at, sort_date: m.created_at, message_type: 'text' }))
         ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         const messages = allMessages.slice(0, limit);
