@@ -543,10 +543,22 @@ class OrderMessagesService {
 
         // Normalize and Merge
         const allMessages = [
-            ...(clientMsgs || []).map((m: any) => ({ ...m, type: 'client', date: m['Created Date'] || m.created_at, sort_date: m['Created Date'] || m.created_at })),
+            ...(clientMsgs || []).map((m: any) => ({
+                ...m,
+                source_type: 'client',
+                date: m['Created Date'] || m.created_at,
+                sort_date: m['Created Date'] || m.created_at
+            })),
             ...(internalMsgs || [])
                 .filter((m: any) => String(m.order_id) === String(orderId)) // All internal (notes & system) stay in their order
-                .map((m: any) => ({ ...m, type: 'internal', date: m.created_at, sort_date: m.created_at, message_type: 'text' }))
+                .map((m: any) => ({
+                    ...m,
+                    source_type: 'internal',
+                    date: m.created_at,
+                    sort_date: m.created_at,
+                    message_type: 'text',
+                    is_system: m.attachment_type === 'system'
+                }))
         ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         const messages = allMessages.slice(0, limit);
