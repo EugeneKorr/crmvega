@@ -106,13 +106,8 @@ class OrderMessagesService {
     async sendClientMessage({ orderId, content, replyToMessageId, managerId }: MessagePayload) {
         if (!content || !content.trim()) throw new Error('Сообщение не может быть пустым');
 
-        const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('id, contact_id, main_id')
-            .eq('id', orderId)
-            .single();
-
-        if (orderError) throw orderError;
+        const order = await this.resolveOrderId(orderId);
+        if (!order) throw new Error('Заявка не найдена');
 
         let messageStatus = 'delivered';
         let errorMessage: string | null = null;
@@ -211,7 +206,7 @@ class OrderMessagesService {
         if (saveError) throw saveError;
 
         await supabase.from('order_messages').insert({
-            order_id: parseInt(String(orderId)),
+            order_id: order.id,
             message_id: savedMessage.id
         });
 
@@ -219,12 +214,8 @@ class OrderMessagesService {
     }
 
     async sendClientFile({ orderId, file, caption, replyToMessageId, managerId }: FilePayload) {
-        const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('id, contact_id, main_id')
-            .eq('id', orderId)
-            .single();
-        if (orderError) throw orderError;
+        const order = await this.resolveOrderId(orderId);
+        if (!order) throw new Error('Заявка не найдена');
 
         const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
         const ext = path.extname(originalName);
@@ -312,18 +303,14 @@ class OrderMessagesService {
 
         if (saveError) throw saveError;
 
-        await supabase.from('order_messages').insert({ order_id: parseInt(String(orderId)), message_id: savedMessage.id });
+        await supabase.from('order_messages').insert({ order_id: order.id, message_id: savedMessage.id });
 
         return savedMessage;
     }
 
     async sendClientVoice({ orderId, file, duration, replyToMessageId, managerId }: FilePayload) {
-        const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('id, contact_id, main_id')
-            .eq('id', orderId)
-            .single();
-        if (orderError) throw orderError;
+        const order = await this.resolveOrderId(orderId);
+        if (!order) throw new Error('Заявка не найдена');
 
         const inputBuffer = fs.readFileSync(file.path);
         const finalBuffer = inputBuffer;
@@ -383,7 +370,7 @@ class OrderMessagesService {
 
         if (saveError) throw saveError;
 
-        await supabase.from('order_messages').insert({ order_id: parseInt(String(orderId)), message_id: savedMessage.id });
+        await supabase.from('order_messages').insert({ order_id: order.id, message_id: savedMessage.id });
 
         return savedMessage;
     }
@@ -400,7 +387,7 @@ class OrderMessagesService {
             .neq('author_type', 'manager');
 
         // Reset unread count logic if separate table exists (orders.unread_count)
-        await supabase.rpc('reset_order_unread_count', { order_id_input: orderId });
+        await supabase.rpc('reset_order_unread_count', { order_id_input: order.id });
     }
 
     async markAllRead() {
@@ -412,6 +399,10 @@ class OrderMessagesService {
     // --- Internal Messages ---
 
     async getInternalMessages(orderId: string | number, limit = 200, offset = 0) {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) return { messages: [], total: 0 };
+        const internalId = order.id;
+
         const { data, error } = await supabase
             .from('internal_messages')
             .select(`
@@ -419,22 +410,26 @@ class OrderMessagesService {
               sender:managers(id, name, email),
               reply_to:internal_messages!reply_to_id(id, content, sender:managers(name))
           `)
-            .eq('order_id', orderId)
+            .eq('order_id', internalId)
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
 
         if (error) throw error;
 
-        const { count } = await supabase.from('internal_messages').select('id', { count: 'exact' }).eq('order_id', orderId);
+        const { count } = await supabase.from('internal_messages').select('id', { count: 'exact' }).eq('order_id', internalId);
 
         return { messages: (data || []).reverse(), total: count || 0 };
     }
 
     async sendInternalMessage({ orderId, content, replyToId, managerId }: { orderId: string | number; content: string; replyToId?: string | number; managerId: string | number }) {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) throw new Error('Заявка не найдена');
+
         const { data, error } = await supabase
             .from('internal_messages')
             .insert({
-                order_id: parseInt(String(orderId)),
+                order_id: order.id,
+                main_id: order.main_id,
                 sender_id: managerId,
                 content: content.trim(),
                 reply_to_id: replyToId || null
@@ -452,8 +447,11 @@ class OrderMessagesService {
     }
 
     async sendInternalFile({ orderId, file, replyToId, managerId }: FilePayload) {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) throw new Error('Заявка не найдена');
+
         const fileName = `${Date.now()}_${file.originalname}`;
-        const filePath = `internal_files/${orderId}/${fileName}`;
+        const filePath = `internal_files/${order.id}/${fileName}`;
 
         const fileContent = fs.readFileSync(file.path);
         const { error: uploadError } = await supabase.storage
@@ -467,7 +465,8 @@ class OrderMessagesService {
         const { data, error } = await supabase
             .from('internal_messages')
             .insert({
-                order_id: parseInt(String(orderId)),
+                order_id: order.id,
+                main_id: order.main_id,
                 sender_id: managerId,
                 content: `📎 ${file.originalname}`,
                 reply_to_id: replyToId || null,
@@ -484,19 +483,23 @@ class OrderMessagesService {
     }
 
     async sendInternalVoice({ orderId, file, duration, managerId }: FilePayload) {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) throw new Error('Заявка не найдена');
+
         const inputBuffer = fs.readFileSync(file.path);
         const finalBuffer = inputBuffer;
         const finalContentType = file.mimetype || 'audio/ogg';
         const finalFileName = `${Date.now()}_voice_internal.ogg`;
 
-        const filePath = `internal_files/${orderId}/${finalFileName}`;
+        const filePath = `internal_files/${order.id}/${finalFileName}`;
         await supabase.storage.from('attachments').upload(filePath, finalBuffer, { contentType: finalContentType });
         const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(filePath);
 
         const { data, error } = await supabase
             .from('internal_messages')
             .insert({
-                order_id: parseInt(String(orderId)),
+                order_id: order.id,
+                main_id: order.main_id,
                 sender_id: managerId,
                 content: '🎤 Голосовое сообщение',
                 attachment_url: urlData.publicUrl,
@@ -511,18 +514,24 @@ class OrderMessagesService {
     }
 
     async markInternalMessagesRead(orderId: string | number, managerId: string | number) {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) return;
+
         await supabase
             .from('internal_messages')
             .update({ is_read: true })
-            .eq('order_id', orderId)
+            .eq('order_id', order.id)
             .neq('sender_id', managerId);
     }
 
     async getUnreadInternalCount(orderId: string | number, managerId: string | number) {
+        const order = await this.resolveOrderId(orderId);
+        if (!order) return 0;
+
         const { count, error } = await supabase
             .from('internal_messages')
             .select('id', { count: 'exact' })
-            .eq('order_id', orderId)
+            .eq('order_id', order.id)
             .eq('is_read', false)
             .neq('sender_id', managerId);
         if (error) throw error;
