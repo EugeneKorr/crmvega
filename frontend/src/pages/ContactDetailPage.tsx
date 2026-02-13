@@ -355,7 +355,7 @@ const ContactDetailPage: React.FC = () => {
           <Form.Item label="Фото контакта">
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <Form.Item name="avatar_url" noStyle>
-                <Input hidden />
+                <Input style={{ display: "none" }} />
               </Form.Item>
               <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
                 {({ getFieldValue }) => (
@@ -363,6 +363,7 @@ const ContactDetailPage: React.FC = () => {
                     size={64}
                     src={getFieldValue('avatar_url')}
                     icon={<UserOutlined />}
+                    style={{ flexShrink: 0 }}
                   />
                 )}
               </Form.Item>

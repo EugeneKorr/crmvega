@@ -264,7 +264,7 @@ const SettingsPage: React.FC = () => {
                 <Form.Item label="Фото профиля">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <Form.Item name="avatar_url" noStyle>
-                      <Input hidden />
+                      <Input style={{ display: 'none' }} />
                     </Form.Item>
                     <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
                       {({ getFieldValue }) => (
@@ -272,6 +272,7 @@ const SettingsPage: React.FC = () => {
                           size={64}
                           src={getFieldValue('avatar_url')}
                           icon={<UserOutlined />}
+                          style={{ flexShrink: 0 }}
                         />
                       )}
                     </Form.Item>
@@ -558,7 +559,7 @@ const SettingsPage: React.FC = () => {
           <Form.Item label="Фото пользователя">
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <Form.Item name="avatar_url" noStyle>
-                <Input hidden />
+                <Input style={{ display: 'none' }} />
               </Form.Item>
               <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
                 {({ getFieldValue }) => (
@@ -566,6 +567,7 @@ const SettingsPage: React.FC = () => {
                     size={64}
                     src={getFieldValue('avatar_url')}
                     icon={<UserOutlined />}
+                    style={{ flexShrink: 0 }}
                   />
                 )}
               </Form.Item>
