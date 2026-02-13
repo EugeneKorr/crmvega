@@ -69,13 +69,13 @@ const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     if (manager) {
-      userForm.setFieldsValue({
+      form.setFieldsValue({
         name: manager.name,
         email: manager.email,
         avatar_url: manager.avatar_url,
       });
     }
-  }, [manager, form, userForm]);
+  }, [manager, form]);
 
   const handleUpdateProfile = async (values: any) => {
     setLoading(true);
