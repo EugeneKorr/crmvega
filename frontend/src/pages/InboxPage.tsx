@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { contactsAPI, ordersAPI } from '../services/api';
 import { supabase } from '../lib/supabase';
-import { InboxContact, Order } from '../types';
+import { InboxContact, Order, ORDER_STATUSES } from '../types';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -376,8 +376,8 @@ const InboxPage: React.FC = () => {
                                                             {contact.last_message?.content || contact.phone || 'Нет сообщений'}
                                                         </Text>
                                                         {contact.last_order_status && (
-                                                            <div style={{ fontSize: 10, opacity: 0.7 }}>
-                                                                #{contact.latest_order_id} • {contact.last_order_status}
+                                                            <div style={{ fontSize: 10, opacity: 0.7, color: '#8c8c8c' }}>
+                                                                Сделка #{contact.latest_order_main_id || contact.latest_order_id} • {(ORDER_STATUSES as any)[contact.last_order_status]?.label || contact.last_order_status}
                                                             </div>
                                                         )}
                                                     </div>
