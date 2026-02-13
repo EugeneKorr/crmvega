@@ -40,12 +40,21 @@ class BubbleService {
 
     // --- Helpers ---
     sanitizeNumeric(val: any): string | null {
-        if (!val) return null;
-        // Check if string "null"
-        if (String(val).toLowerCase() === 'null') return null;
-        const num = parseFloat(val);
-        if (isNaN(num)) return null;
-        return String(num);
+        if (val === null || val === undefined) return null;
+        let str = String(val).toLowerCase().trim();
+        if (str === 'null' || str === '') return null;
+
+        // Remove any non-numeric characters except minus sign (for IDs we usually only want positive digits)
+        // If it's scientific notation, parseFloat can handle it but we must floor it
+        if (str.includes('e')) {
+            const num = parseFloat(str);
+            return isNaN(num) ? null : Math.floor(num).toString();
+        }
+
+        // Just take the digits before any dot to ensure it's an integer
+        const clean = str.replace(/[^0-9.-]/g, '');
+        const integerPart = clean.split('.')[0];
+        return integerPart || null;
     }
 
     cleanNull(val: any): string | null {
@@ -55,9 +64,9 @@ class BubbleService {
     }
 
     parseNumeric(value: any): number | null {
-        if (value === null || value === undefined || String(value) === 'null' || String(value) === '') return null;
-        const parsed = parseFloat(value);
-        return isNaN(parsed) ? null : parsed;
+        if (value === null || value === undefined || String(value).trim() === '' || String(value).toLowerCase() === 'null') return null;
+        const num = parseFloat(value);
+        return isNaN(num) ? null : Math.floor(num);
     }
 
     // --- Message Processing ---
