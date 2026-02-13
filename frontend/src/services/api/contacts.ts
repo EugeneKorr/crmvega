@@ -8,7 +8,7 @@ export const contactsAPI = {
         return response.data;
     },
 
-    getById: async (id: number): Promise<Contact> => {
+    getById: async (id: number | string): Promise<Contact> => {
         const response = await api.get(`/contacts/${id}`);
         return response.data;
     },
@@ -18,12 +18,12 @@ export const contactsAPI = {
         return response.data;
     },
 
-    update: async (id: number, contact: Partial<Contact>): Promise<Contact> => {
+    update: async (id: number | string, contact: Partial<Contact>): Promise<Contact> => {
         const response = await api.patch(`/contacts/${id}`, contact);
         return response.data;
     },
 
-    delete: async (id: number): Promise<void> => {
+    delete: async (id: number | string): Promise<void> => {
         await api.delete(`/contacts/${id}`);
     },
 
@@ -33,7 +33,7 @@ export const contactsAPI = {
         return response.data;
     },
 
-    markMessagesAsRead: async (contactId: number): Promise<void> => {
+    markMessagesAsRead: async (contactId: number | string): Promise<void> => {
         await api.post(`/contacts/${contactId}/read-messages`);
     },
 

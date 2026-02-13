@@ -64,7 +64,7 @@ const ContactDetailPage: React.FC = () => {
     if (!id) return;
     try {
       setNotFound(false);
-      const data = await contactsAPI.getById(parseInt(id));
+      const data = await contactsAPI.getById(id);
       setContact(data);
       form.setFieldsValue(data);
     } catch (error: any) {
@@ -98,9 +98,9 @@ const ContactDetailPage: React.FC = () => {
   };
 
   const handleUpdateContact = async (values: any) => {
-    if (!id) return;
+    if (!contact) return;
     try {
-      await contactsAPI.update(parseInt(id), values);
+      await contactsAPI.update(contact.id, values);
       message.success('Контакт обновлен');
       setIsEditModalVisible(false);
       fetchContact();
