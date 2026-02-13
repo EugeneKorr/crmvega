@@ -43,7 +43,7 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 
 const SettingsPage: React.FC = () => {
-  const { manager } = useAuth();
+  const { manager, updateManager } = useAuth();
   const [form] = Form.useForm();
   const [userForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -79,10 +79,8 @@ const SettingsPage: React.FC = () => {
     try {
       if (manager && manager.id) {
         await managersAPI.update(manager.id, { name: values.name });
+        updateManager({ name: values.name });
         message.success('Профиль обновлен');
-        // Update local state or re-fetch user if needed, though Context usually handles this upon next load or check
-        // For now message is enough as backend is updated.
-        // Ideally we should update auth context here, but simple reload next time works.
       } else {
         message.error('Ошибка идентификации пользователя');
       }

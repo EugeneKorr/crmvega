@@ -58,11 +58,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setManager(null);
   };
 
+  const updateManager = (data: Partial<Manager>) => {
+    if (manager) {
+      const updated = { ...manager, ...data };
+      setManager(updated);
+      localStorage.setItem('manager', JSON.stringify(updated));
+    }
+  };
+
   const value: AuthContextType = {
     manager,
     login,
     register,
     logout,
+    updateManager,
     isLoading,
   };
 
