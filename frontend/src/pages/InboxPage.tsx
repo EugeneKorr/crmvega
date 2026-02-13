@@ -376,8 +376,8 @@ const InboxPage: React.FC = () => {
                                                             {contact.last_message?.content || contact.phone || 'Нет сообщений'}
                                                         </Text>
                                                         {contact.last_order_status && (
-                                                            <div style={{ fontSize: 10, opacity: 0.7, color: '#8c8c8c' }}>
-                                                                Сделка #{contact.latest_order_main_id || contact.latest_order_id} • {(ORDER_STATUSES as any)[contact.last_order_status]?.label || contact.last_order_status}
+                                                            <div style={{ fontSize: 11, opacity: 0.8, color: '#1890ff', fontWeight: 500 }}>
+                                                                {(ORDER_STATUSES as any)[contact.last_order_status]?.label || contact.last_order_status}
                                                             </div>
                                                         )}
                                                     </div>
