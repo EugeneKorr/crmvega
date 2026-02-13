@@ -278,17 +278,20 @@ class ContactService {
     }
 
     async update(id: string, updateData: any) {
-        const { data, error } = await supabase
-            .from('contacts')
-            .update(updateData)
-            .eq('id', id)
-            .select()
-            .single();
+        let query = supabase.from('contacts').update(updateData);
+
+        if (/^\d{9,}$/.test(id)) {
+            query = query.eq('telegram_user_id', id);
+        } else {
+            query = query.eq('id', id);
+        }
+
+        const { data, error } = await query.select().single();
 
         if (error) throw error;
 
         // Run automations
-        runAutomations('contact_created', data).catch(err => {
+        runAutomations('contact_updated', data).catch(err => {
             console.error('Error running automations for contact_updated:', err);
         });
 
@@ -296,20 +299,35 @@ class ContactService {
     }
 
     async delete(id: string) {
-        const { error } = await supabase
-            .from('contacts')
-            .delete()
-            .eq('id', id);
+        let query = supabase.from('contacts').delete();
+
+        if (/^\d{9,}$/.test(id)) {
+            query = query.eq('telegram_user_id', id);
+        } else {
+            query = query.eq('id', id);
+        }
+
+        const { error } = await query;
 
         if (error) throw error;
         return { success: true };
     }
 
     async markMessagesRead(id: string) {
+        let realContactId = id;
+        if (/^\d{9,}$/.test(id)) {
+            const { data: contact } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('telegram_user_id', id)
+                .single();
+            if (contact) realContactId = contact.id;
+        }
+
         const { data: orders, error: ordersError } = await supabase
             .from('orders')
             .select('main_id')
-            .eq('contact_id', id);
+            .eq('contact_id', realContactId);
 
         if (ordersError) throw ordersError;
 
