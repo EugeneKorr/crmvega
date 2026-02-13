@@ -15,6 +15,7 @@ import {
   Form,
   Modal,
   Select,
+  Upload,
   message,
   Grid
 } from 'antd';
@@ -351,6 +352,40 @@ const ContactDetailPage: React.FC = () => {
         width={600}
       >
         <Form form={form} layout="vertical" onFinish={handleUpdateContact}>
+          <Form.Item label="Фото контакта">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Form.Item name="avatar_url" noStyle>
+                <Input hidden />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
+                {({ getFieldValue }) => (
+                  <Avatar
+                    size={64}
+                    src={getFieldValue('avatar_url')}
+                    icon={<UserOutlined />}
+                  />
+                )}
+              </Form.Item>
+              <Upload
+                accept="image/*"
+                showUploadList={false}
+                customRequest={async ({ file, onSuccess, onError }: any) => {
+                  try {
+                    const result = await contactsAPI.uploadFile(file);
+                    form.setFieldsValue({ avatar_url: result.url });
+                    onSuccess(result);
+                    message.success('Фото загружено');
+                  } catch (err) {
+                    onError(err);
+                    message.error('Ошибка загрузки фото');
+                  }
+                }}
+              >
+                <Button icon={<PlusOutlined />}>Изменить фото</Button>
+              </Upload>
+            </div>
+          </Form.Item>
+
           <Form.Item name="name" label="Имя" rules={[{ required: true }]}>
             <Input />
           </Form.Item>

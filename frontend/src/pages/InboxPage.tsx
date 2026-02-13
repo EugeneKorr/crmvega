@@ -422,8 +422,8 @@ const InboxPage: React.FC = () => {
                                             type="text"
                                         />
                                     )}
-                                    <Avatar size={40} src={selectedContact.avatar_url} style={{ backgroundColor: '#87d068' }}>
-                                        {selectedContact.name?.[0]}
+                                    <Avatar size={40} src={selectedContact.avatar_url} icon={<UserOutlined />} style={{ backgroundColor: '#87d068' }}>
+                                        {!selectedContact.avatar_url && selectedContact.name?.[0]}
                                     </Avatar>
                                     <div>
                                         <Title level={5} style={{ margin: 0 }}>{selectedContact.name}</Title>

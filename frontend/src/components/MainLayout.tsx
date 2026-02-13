@@ -401,7 +401,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               </Badge>
               <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
                 <Space style={{ cursor: 'pointer' }}>
-                  <Avatar icon={<UserOutlined />} />
+                  <Avatar icon={<UserOutlined />} src={manager?.avatar_url} />
                   <span>{manager?.name || 'Пользователь'}</span>
                 </Space>
               </Dropdown>
@@ -429,7 +429,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                   <BellOutlined onClick={() => navigate('/inbox?filter=unread')} />
                 </Badge>
               )}
-              <Avatar size="small" icon={<UserOutlined />} />
+              <Avatar size="small" icon={<UserOutlined />} src={manager?.avatar_url} />
             </Space>
           </div>
         )}

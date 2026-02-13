@@ -14,6 +14,7 @@ import {
   // Badge,
   Modal,
   Form,
+  Upload,
   message,
   Grid,
   List
@@ -151,7 +152,7 @@ const ContactsPage: React.FC = () => {
       key: 'contact',
       render: (_, record) => (
         <Space>
-          <Avatar icon={<UserOutlined />} />
+          <Avatar icon={<UserOutlined />} src={record.avatar_url} />
           <div>
             <div
               style={{ fontWeight: 'bold', cursor: 'pointer', color: '#1890ff' }}
@@ -326,7 +327,12 @@ const ContactsPage: React.FC = () => {
                       cursor: 'pointer'
                     }}
                   >
-                    <Avatar size={48} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff', flexShrink: 0 }} />
+                    <Avatar
+                      size={48}
+                      icon={<UserOutlined />}
+                      src={contact.avatar_url}
+                      style={{ backgroundColor: '#1890ff', flexShrink: 0 }}
+                    />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -387,6 +393,40 @@ const ContactsPage: React.FC = () => {
           layout="vertical"
           onFinish={handleSubmit}
         >
+          <Form.Item label="Фото контакта">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Form.Item name="avatar_url" noStyle>
+                <Input hidden />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
+                {({ getFieldValue }) => (
+                  <Avatar
+                    size={64}
+                    src={getFieldValue('avatar_url')}
+                    icon={<UserOutlined />}
+                  />
+                )}
+              </Form.Item>
+              <Upload
+                accept="image/*"
+                showUploadList={false}
+                customRequest={async ({ file, onSuccess, onError }: any) => {
+                  try {
+                    const result = await contactsAPI.uploadFile(file);
+                    form.setFieldsValue({ avatar_url: result.url });
+                    onSuccess(result);
+                    message.success('Фото загружено');
+                  } catch (err) {
+                    onError(err);
+                    message.error('Ошибка загрузки фото');
+                  }
+                }}
+              >
+                <Button icon={<PlusOutlined />}>Изменить фото</Button>
+              </Upload>
+            </div>
+          </Form.Item>
+
           <Form.Item
             name="name"
             label="Имя"

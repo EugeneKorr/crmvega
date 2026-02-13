@@ -5,6 +5,7 @@ export interface Manager {
   email: string;
   name: string;
   role?: ManagerRole;
+  avatar_url?: string;
   created_at: string;
 }
 

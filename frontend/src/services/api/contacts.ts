@@ -1,5 +1,6 @@
 import api from './client';
 import { Contact, InboxContact } from '../../types';
+import { uploadAPI } from './upload';
 
 export const contactsAPI = {
     getAll: async (params?: { search?: string; status?: string; limit?: number; offset?: number }): Promise<{ contacts: Contact[] }> => {
@@ -34,5 +35,9 @@ export const contactsAPI = {
 
     markMessagesAsRead: async (contactId: number): Promise<void> => {
         await api.post(`/contacts/${contactId}/read-messages`);
+    },
+
+    uploadFile: async (file: File) => {
+        return uploadAPI.uploadFile(file);
     },
 };

@@ -1,5 +1,6 @@
 import api from './client';
 import { Manager } from '../../types';
+import { uploadAPI } from './upload';
 
 export const managersAPI = {
     getAll: async (): Promise<Manager[]> => {
@@ -12,7 +13,7 @@ export const managersAPI = {
         return response.data;
     },
 
-    update: async (id: number, manager: { name?: string; role?: string; password?: string }): Promise<Manager> => {
+    update: async (id: number, manager: { name?: string; role?: string; password?: string; avatar_url?: string }): Promise<Manager> => {
         const response = await api.patch(`/managers/${id}`, manager);
         return response.data;
     },
@@ -24,5 +25,9 @@ export const managersAPI = {
     updateNotificationSettings: async (settings: any): Promise<{ notification_settings: any }> => {
         const response = await api.put('/managers/settings/notifications', { notification_settings: settings });
         return response.data;
+    },
+
+    uploadFile: async (file: File) => {
+        return uploadAPI.uploadFile(file);
     },
 };

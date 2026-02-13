@@ -8,6 +8,7 @@ import {
   Input,
   Button,
   Space,
+  Avatar,
   Switch,
   Select,
   Divider,
@@ -18,6 +19,7 @@ import {
   Tag,
   Table,
   Modal,
+  Upload,
   Popconfirm,
   Result,
   Grid
@@ -67,19 +69,20 @@ const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     if (manager) {
-      form.setFieldsValue({
+      userForm.setFieldsValue({
         name: manager.name,
         email: manager.email,
+        avatar_url: manager.avatar_url,
       });
     }
-  }, [manager, form]);
+  }, [manager, form, userForm]);
 
   const handleUpdateProfile = async (values: any) => {
     setLoading(true);
     try {
       if (manager && manager.id) {
-        await managersAPI.update(manager.id, { name: values.name });
-        updateManager({ name: values.name });
+        await managersAPI.update(manager.id, { name: values.name, avatar_url: values.avatar_url });
+        updateManager({ name: values.name, avatar_url: values.avatar_url });
         message.success('Профиль обновлен');
       } else {
         message.error('Ошибка идентификации пользователя');
@@ -140,6 +143,7 @@ const SettingsPage: React.FC = () => {
       name: record.name,
       email: record.email,
       role: record.role,
+      avatar_url: record.avatar_url,
       password: '', // Reset password field
     });
     setIsUserModalVisible(true);
@@ -257,6 +261,39 @@ const SettingsPage: React.FC = () => {
                 onFinish={handleUpdateProfile}
                 style={{ maxWidth: 500 }}
               >
+                <Form.Item label="Фото профиля">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <Form.Item name="avatar_url" noStyle>
+                      <Input hidden />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
+                      {({ getFieldValue }) => (
+                        <Avatar
+                          size={64}
+                          src={getFieldValue('avatar_url')}
+                          icon={<UserOutlined />}
+                        />
+                      )}
+                    </Form.Item>
+                    <Upload
+                      accept="image/*"
+                      showUploadList={false}
+                      customRequest={async ({ file, onSuccess, onError }: any) => {
+                        try {
+                          const result = await managersAPI.uploadFile(file);
+                          form.setFieldsValue({ avatar_url: result.url });
+                          onSuccess(result);
+                          message.success('Фото загружено');
+                        } catch (err) {
+                          onError(err);
+                          message.error('Ошибка загрузки фото');
+                        }
+                      }}
+                    >
+                      <Button icon={<PlusOutlined />}>Изменить фото</Button>
+                    </Upload>
+                  </div>
+                </Form.Item>
                 <Form.Item name="name" label="Имя" rules={[{ required: true }]}>
                   <Input prefix={<UserOutlined />} size="large" />
                 </Form.Item>
@@ -518,6 +555,39 @@ const SettingsPage: React.FC = () => {
       >
         {/* Form Content */}
         <Form form={userForm} layout="vertical" onFinish={handleSaveUser}>
+          <Form.Item label="Фото пользователя">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Form.Item name="avatar_url" noStyle>
+                <Input hidden />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, curr) => prev.avatar_url !== curr.avatar_url}>
+                {({ getFieldValue }) => (
+                  <Avatar
+                    size={64}
+                    src={getFieldValue('avatar_url')}
+                    icon={<UserOutlined />}
+                  />
+                )}
+              </Form.Item>
+              <Upload
+                accept="image/*"
+                showUploadList={false}
+                customRequest={async ({ file, onSuccess, onError }: any) => {
+                  try {
+                    const result = await managersAPI.uploadFile(file);
+                    userForm.setFieldsValue({ avatar_url: result.url });
+                    onSuccess(result);
+                    message.success('Фото загружено');
+                  } catch (err) {
+                    onError(err);
+                    message.error('Ошибка загрузки фото');
+                  }
+                }}
+              >
+                <Button icon={<PlusOutlined />}>Изменить фото</Button>
+              </Upload>
+            </div>
+          </Form.Item>
           <Form.Item name="name" label="Имя" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input disabled={!!editingManager} /></Form.Item>
           <Form.Item name="password" label="Пароль"><Input.Password placeholder="Если хотите изменить" /></Form.Item>
