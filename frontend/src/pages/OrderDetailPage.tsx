@@ -363,7 +363,7 @@ const OrderDetailPage: React.FC = () => {
 
   return (
     <div style={{
-      height: '100vh',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
       background: '#f0f2f5',
@@ -382,7 +382,8 @@ const OrderDetailPage: React.FC = () => {
           boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
           zIndex: 100,
           position: 'sticky',
-          top: 0
+          top: 0,
+          flexShrink: 0,
         }}>
           <Button
             type="text"
@@ -468,6 +469,7 @@ const OrderDetailPage: React.FC = () => {
           padding: '16px 24px',
           color: 'white',
           boxShadow: '0 2px 8px rgba(102, 126, 234, 0.4)',
+          flexShrink: 0,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <Space size="middle" style={{ width: '100%' }}>
