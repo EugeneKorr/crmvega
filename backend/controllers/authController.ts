@@ -59,6 +59,17 @@ class AuthController {
         }
     }
 
+    // TEMPORARY: Quick login without password
+    async quickLogin(req: Request, res: Response) {
+        try {
+            const result = await authService.quickLogin();
+            res.json(result);
+        } catch (error: any) {
+            console.error('Quick login error:', error);
+            res.status(400).json({ error: error.message });
+        }
+    }
+
     async verifyResetToken(req: Request, res: Response) {
         try {
             const { token } = req.params;

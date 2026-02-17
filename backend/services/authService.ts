@@ -181,6 +181,36 @@ class AuthService {
         return { success: true, message: 'Пароль успешно изменён' };
     }
 
+    // TEMPORARY: Quick login without password (auto-login as admin)
+    async quickLogin() {
+        const { data: manager, error } = await supabaseAnon
+            .from('managers')
+            .select('*')
+            .eq('role', 'admin')
+            .limit(1)
+            .single();
+
+        if (error || !manager) {
+            throw new Error('Админ не найден');
+        }
+
+        const token = jwt.sign(
+            { id: manager.id, email: manager.email, name: manager.name, role: manager.role || 'admin' },
+            process.env.JWT_SECRET || 'secret',
+            { expiresIn: '24h' }
+        );
+
+        return {
+            token,
+            manager: {
+                id: manager.id,
+                email: manager.email,
+                name: manager.name,
+                role: manager.role || 'admin'
+            }
+        };
+    }
+
     async verifyResetToken(token: string) {
         const { data: resetToken, error } = await supabaseAnon
             .from('password_reset_tokens')
