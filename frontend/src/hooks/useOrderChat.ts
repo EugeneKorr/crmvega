@@ -195,13 +195,12 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         }
     };
 
-    const addReaction = async (msgId: number, emoji: string) => {
-        const foundMsg = messagesRef.current.find(m => m.id === msgId);
-        const msgType = foundMsg?.source_type || 'client';
+    const addReaction = async (msg: TimelineMessage, emoji: string) => {
+        const msgType = msg.source_type || 'client';
 
         // Optimistic
         setMessages(prev => prev.map(m => {
-            if (m.id === msgId) {
+            if (m.id === msg.id && (m.source_type || 'client') === msgType) {
                 const currentReactions = m.reactions || [];
                 const otherReactions = currentReactions.filter(r => r.author_id !== manager?.id);
                 const myExisting = currentReactions.find(r => r.author_id === manager?.id);
@@ -216,7 +215,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         }));
 
         try {
-            await messagesAPI.addReaction(msgId, emoji, msgType);
+            await messagesAPI.addReaction(msg.id, emoji, msgType);
         } catch (e) {
             console.error(e);
             // Revert on error? For now just log

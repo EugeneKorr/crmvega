@@ -228,7 +228,7 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
                   msg={msg}
                   isOwn={isOwn}
                   onReply={(m) => setReplyTo(m as TimelineMessage)}
-                  onAddReaction={(m, e) => addReaction(m.id, e)}
+                  onAddReaction={(m, e) => addReaction(m as TimelineMessage, e)}
                   replyMessage={replyCtx}
                   variant={variant}
                   alignment={alignment}
