@@ -41,18 +41,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // TEMPORARY: Quick login without password
-  const quickLogin = async () => {
-    try {
-      const { token, manager: managerData } = await authAPI.quickLogin();
-      localStorage.setItem('token', token);
-      localStorage.setItem('manager', JSON.stringify(managerData));
-      setManager(managerData);
-    } catch (error) {
-      throw error;
-    }
-  };
-
   const register = async (email: string, password: string, name: string) => {
     try {
       const { token, manager: managerData } = await authAPI.register(email, password, name);
@@ -78,10 +66,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const value = {
+  const value: AuthContextType = {
     manager,
     login,
-    quickLogin,
     register,
     logout,
     updateManager,

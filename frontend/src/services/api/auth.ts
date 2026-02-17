@@ -7,12 +7,6 @@ export const authAPI = {
         return response.data;
     },
 
-    // TEMPORARY: Quick login without password
-    quickLogin: async (): Promise<{ token: string; manager: Manager }> => {
-        const response = await api.post('/auth/quick-login');
-        return response.data;
-    },
-
     register: async (email: string, password: string, name: string): Promise<{ token: string; manager: Manager }> => {
         const response = await api.post('/auth/register', { email, password, name });
         return response.data;
