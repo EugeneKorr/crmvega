@@ -45,11 +45,12 @@ class OrderMessagesService {
         return order || null;
     }
 
-    private async getAllRelatedLeadIds(orderId?: string | number, contactId?: number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null, currentMainId: string | null, allRelatedOrderIds: number[] }> {
+    private async getAllRelatedLeadIds(orderId?: string | number, contactId?: number): Promise<{ leadIds: string[], contactId: number | null, internalId: number | null, currentMainId: string | null, allRelatedOrderIds: number[], telegramUserIds: string[] }> {
         let order = orderId ? await this.resolveOrderId(orderId) : null;
         let effectiveContactId = contactId || order?.contact_id || null;
 
         const leadIds = new Set<string>();
+        const telegramUserIds = new Set<string>();
         const allRelatedOrderIds: number[] = [];
 
         if (order?.main_id) leadIds.add(String(order.main_id));
@@ -63,7 +64,7 @@ class OrderMessagesService {
                 .single();
 
             if (contact) {
-                if (contact.telegram_user_id) leadIds.add(String(contact.telegram_user_id));
+                if (contact.telegram_user_id) telegramUserIds.add(String(contact.telegram_user_id));
                 const otherOrders = (contact as any).orders || [];
                 otherOrders.forEach((o: any) => {
                     if (o.main_id) leadIds.add(String(o.main_id));
@@ -76,13 +77,22 @@ class OrderMessagesService {
             contactId: effectiveContactId || null,
             internalId: order?.id || null,
             currentMainId: order?.main_id ? String(order.main_id) : null,
-            allRelatedOrderIds: Array.from(new Set(allRelatedOrderIds))
+            allRelatedOrderIds: Array.from(new Set(allRelatedOrderIds)),
+            telegramUserIds: Array.from(telegramUserIds)
         };
     }
 
     async getClientMessages(orderId: string | number, limit = 200, offset = 0) {
-        const { leadIds, contactId } = await this.getAllRelatedLeadIds(orderId);
-        if (leadIds.length === 0) return { messages: [], total: 0, mainId: null };
+        const { leadIds, contactId, telegramUserIds } = await this.getAllRelatedLeadIds(orderId);
+        if (leadIds.length === 0 && telegramUserIds.length === 0) return { messages: [], total: 0, mainId: null };
+
+        const orFilters: string[] = [];
+        if (leadIds.length > 0) {
+            orFilters.push(...leadIds.map(id => `main_id.eq.${id}`));
+        }
+        if (telegramUserIds.length > 0) {
+            orFilters.push(...telegramUserIds.map(id => `telegram_user_id.eq.${id}`));
+        }
 
         const { data: messages, count, error: messagesError } = await supabase
             .from('messages')
@@ -90,7 +100,7 @@ class OrderMessagesService {
         *,
         sender:managers!manager_id(id, name, email)
       `, { count: 'exact' })
-            .or(leadIds.map(id => `main_id.eq.${id}`).join(','))
+            .or(orFilters.join(','))
             .order('Created Date', { ascending: false })
             .range(offset, offset + limit - 1);
 
@@ -99,7 +109,7 @@ class OrderMessagesService {
         return {
             messages: (messages || []).reverse(),
             total: count || 0,
-            mainId: leadIds[0] || null // Return the first one as a primary reference
+            mainId: leadIds[0] || null
         };
     }
 
@@ -376,13 +386,21 @@ class OrderMessagesService {
     }
 
     async markClientMessagesRead(orderId: string | number) {
-        const { leadIds, allRelatedOrderIds } = await this.getAllRelatedLeadIds(orderId);
-        if (leadIds.length === 0) return;
+        const { leadIds, allRelatedOrderIds, telegramUserIds } = await this.getAllRelatedLeadIds(orderId);
+        if (leadIds.length === 0 && telegramUserIds.length === 0) return;
+
+        const orFilters: string[] = [];
+        if (leadIds.length > 0) {
+            orFilters.push(...leadIds.map(id => `main_id.eq.${id}`));
+        }
+        if (telegramUserIds.length > 0) {
+            orFilters.push(...telegramUserIds.map(id => `telegram_user_id.eq.${id}`));
+        }
 
         await supabase
             .from('messages')
             .update({ is_read: true })
-            .in('main_id', leadIds)
+            .or(orFilters.join(','))
             .eq('is_read', false)
             .neq('author_type', 'manager');
 
@@ -543,8 +561,8 @@ class OrderMessagesService {
     }
 
     async getTimeline(params: { orderId?: string | number, contactId?: number }, limit = 50, before: string | null = null) {
-        const { leadIds, internalId, currentMainId, allRelatedOrderIds } = await this.getAllRelatedLeadIds(params.orderId, params.contactId);
-        if (leadIds.length === 0 && allRelatedOrderIds.length === 0) return { messages: [], meta: { total_fetched: 0, limit, has_more: false } };
+        const { leadIds, internalId, currentMainId, allRelatedOrderIds, telegramUserIds } = await this.getAllRelatedLeadIds(params.orderId, params.contactId);
+        if (leadIds.length === 0 && telegramUserIds.length === 0 && allRelatedOrderIds.length === 0) return { messages: [], meta: { total_fetched: 0, limit, has_more: false } };
 
         // Fetch Client Messages
         let clientQuery = supabase
@@ -553,8 +571,16 @@ class OrderMessagesService {
             .order('Created Date', { ascending: false })
             .limit(limit);
 
+        const orFilters: string[] = [];
         if (leadIds.length > 0) {
-            clientQuery = clientQuery.or(leadIds.map(id => `main_id.eq.${id}`).join(','));
+            orFilters.push(...leadIds.map(id => `main_id.eq.${id}`));
+        }
+        if (telegramUserIds.length > 0) {
+            orFilters.push(...telegramUserIds.map(id => `telegram_user_id.eq.${id}`));
+        }
+
+        if (orFilters.length > 0) {
+            clientQuery = clientQuery.or(orFilters.join(','));
         } else {
             clientQuery = clientQuery.eq('id', -1); // Force empty
         }
