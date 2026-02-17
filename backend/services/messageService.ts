@@ -396,10 +396,12 @@ class MessageService {
         return message;
     }
 
-    async addReaction(messageId: string, emoji: string, manager: any) {
+    async addReaction(messageId: string, emoji: string, manager: any, type: 'client' | 'internal' = 'client') {
+        const tableName = type === 'internal' ? 'internal_messages' : 'messages';
+
         const { data: message, error: fetchError } = await supabase
-            .from('messages')
-            .select('id, reactions, main_id, message_id_tg, content')
+            .from(tableName)
+            .select('id, reactions, main_id, content')
             .eq('id', messageId)
             .single();
 
@@ -429,16 +431,16 @@ class MessageService {
             });
         }
 
-        const { error: updateError } = await supabase.from('messages').update({ reactions: updatedReactions }).eq('id', messageId);
+        const { error: updateError } = await supabase.from(tableName).update({ reactions: updatedReactions }).eq('id', messageId);
         if (updateError) throw updateError;
 
-        const { data: updatedMessage, error: fetchFreshError } = await supabase.from('messages').select('*').eq('id', messageId).single();
+        const { data: updatedMessage, error: fetchFreshError } = await supabase.from(tableName).select('*').eq('id', messageId).single();
         if (fetchFreshError || !updatedMessage) throw fetchFreshError || new Error('Failed to fetch updated message');
 
         if (!updatedMessage.content && message.content) updatedMessage.content = message.content;
 
-        // TG Sync
-        if (updatedMessage.message_id_tg && process.env.TELEGRAM_BOT_TOKEN) {
+        // TG Sync - only for client messages
+        if (type === 'client' && updatedMessage.message_id_tg && process.env.TELEGRAM_BOT_TOKEN) {
             try {
                 let telegramUserId = null;
                 if (updatedMessage.main_id) {

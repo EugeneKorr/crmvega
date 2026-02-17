@@ -369,6 +369,12 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps & {
                             )}
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 4, opacity: 0.7, fontSize: 10 }}>
+                                <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="topRight">
+                                    <SmileOutlined
+                                        onClick={(e) => e.stopPropagation()} // Stop propagation to prevent double triggering or other issues
+                                        style={{ fontSize: 12, cursor: 'pointer', marginRight: 4 }}
+                                    />
+                                </Dropdown>
                                 {isError ? (
                                     <span style={{ color: '#ff4d4f', display: 'flex', alignItems: 'center', gap: 2 }}>
                                         <ExclamationCircleFilled /> Ошибка

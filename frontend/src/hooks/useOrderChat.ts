@@ -196,6 +196,9 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     };
 
     const addReaction = async (msgId: number, emoji: string) => {
+        const foundMsg = messagesRef.current.find(m => m.id === msgId);
+        const msgType = foundMsg?.source_type || 'client';
+
         // Optimistic
         setMessages(prev => prev.map(m => {
             if (m.id === msgId) {
@@ -213,8 +216,11 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         }));
 
         try {
-            await messagesAPI.addReaction(msgId, emoji);
-        } catch (e) { console.error(e); }
+            await messagesAPI.addReaction(msgId, emoji, msgType);
+        } catch (e) {
+            console.error(e);
+            // Revert on error? For now just log
+        }
     };
 
     // Subscriptions
@@ -296,6 +302,19 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                     const updated = payload.new;
                     setMessages(prev => prev.map(m =>
                         (String(m.id) === String(updated.id) && m.source_type === 'client')
+                            ? { ...m, ...updated, content: updated.content || m.content }
+                            : m
+                    ));
+                })
+                .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'internal_messages',
+                    filter: mainId ? `main_id=eq.${mainId}` : `order_id=eq.${internalIdForSub}`
+                }, (payload: any) => {
+                    const updated = payload.new;
+                    setMessages(prev => prev.map(m =>
+                        (String(m.id) === String(updated.id) && m.source_type === 'internal')
                             ? { ...m, ...updated, content: updated.content || m.content }
                             : m
                     ));

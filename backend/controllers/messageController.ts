@@ -85,10 +85,10 @@ class MessageController {
     async addReaction(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const { emoji } = req.body;
+            const { emoji, type } = req.body;
             const manager = (req as any).manager;
 
-            const message = await messageService.addReaction(id as string, emoji, manager);
+            const message = await messageService.addReaction(id as string, emoji, manager, type);
             res.json(message);
         } catch (error: any) {
             console.error('Error adding reaction:', error);

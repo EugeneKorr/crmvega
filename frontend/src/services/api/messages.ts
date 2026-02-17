@@ -7,8 +7,8 @@ export const messagesAPI = {
         return response.data;
     },
 
-    addReaction: async (messageId: number, emoji: string): Promise<Message> => {
-        const response = await api.post(`/messages/${messageId}/reactions`, { emoji });
+    addReaction: async (messageId: number, emoji: string, type: 'client' | 'internal' = 'client'): Promise<Message> => {
+        const response = await api.post(`/messages/${messageId}/reactions`, { emoji, type });
         return response.data;
     },
 };
