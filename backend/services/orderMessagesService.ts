@@ -605,6 +605,10 @@ class OrderMessagesService {
             if (currentMainId) filters.push(`main_id.eq.${currentMainId}`);
             if (allRelatedOrderIds.length > 0) filters.push(...allRelatedOrderIds.map(id => `order_id.eq.${id}`));
             internalQuery = internalQuery.or(filters.join(','));
+
+            // Exclude system messages (status changes, etc) from the general/contact view
+            // We use .or with neq/is.null because pure .neq drops null values
+            internalQuery = internalQuery.or('attachment_type.neq.system,attachment_type.is.null');
         } else {
             internalQuery = internalQuery.eq('id', -1);
         }
