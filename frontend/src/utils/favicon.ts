@@ -2,77 +2,108 @@
 let defaultFavicon: string | null = null;
 let faviconImage: HTMLImageElement | null = null;
 
-export const updateFavicon = (count: number) => {
+export function updateFavicon(count: number) {
     const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
     if (!link) return;
 
-    // Save the original favicon URL once
     if (!defaultFavicon) {
+        // Store original favicon URL
+        if (link.href.startsWith('data:')) return;
         defaultFavicon = link.href;
     }
 
-    // If no unread items, restore the original favicon
     if (count === 0) {
-        link.href = defaultFavicon;
+        if (defaultFavicon) link.href = defaultFavicon;
         return;
     }
 
-    // Load image if not loaded
+    const runDraw = () => drawFavicon(count, link);
+
     if (!faviconImage) {
         faviconImage = new Image();
-        faviconImage.crossOrigin = 'anonymous'; // helpful if serving from different origin
+        faviconImage.crossOrigin = 'anonymous';
         faviconImage.src = defaultFavicon;
-        faviconImage.onload = () => {
-            drawFavicon(count, link);
-        };
-        // Handle error loading favicon
-        faviconImage.onerror = () => {
-            console.warn("Failed to load favicon for badge update");
-        };
+        faviconImage.onload = runDraw;
     } else if (faviconImage.complete) {
-        drawFavicon(count, link);
+        runDraw();
     } else {
-        // If currently loading, attach a one-time listener or just let the onload handle the current call if it was just set
-        // Simpler: just set onload again (it overrides)
-        faviconImage.onload = () => drawFavicon(count, link);
+        faviconImage.onload = runDraw;
     }
-};
+}
 
-const drawFavicon = (count: number, link: HTMLLinkElement) => {
+function drawFavicon(count: number, link: HTMLLinkElement) {
     if (!faviconImage) return;
 
     const canvas = document.createElement('canvas');
-    // Use 32x32 for standard high-quality favicon rendering
     canvas.width = 32;
     canvas.height = 32;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Draw original favicon
-    // We use 32x32 destination size
+    // 1. Draw original icon
     ctx.drawImage(faviconImage, 0, 0, 32, 32);
 
-    // Draw red circle (dot)
-    // Position: Top Right
-    const dotRadius = 5;
-    const x = 24; // (32 - 8) roughly
-    const y = 8;
+    // 2. Configure Badge
+    const text = count > 99 ? '99+' : count.toString();
+    const fontSize = 18; // Large, readable font
+    ctx.font = `bold ${fontSize}px sans-serif`;
+
+    const textMetrics = ctx.measureText(text);
+    const textWidth = textMetrics.width;
+
+    // Height is fixed
+    const height = 18;
+    // Width adjusts to text
+    const padding = 6;
+    const width = Math.max(height, textWidth + padding);
+
+    // 3. Position: Top Right
+    // We anchor the badge to the top-right corner of the 32x32 canvas.
+    // We give it a slight offset from the edge so the border doesn't clip.
+    const top = 0;
+    const right = 32;
+
+    const centerX = right - (width / 2);
+    const centerY = top + (height / 2);
+
+    // 4. Draw Background
+    ctx.fillStyle = '#F5222D'; // Bright Red (Ant Design 'error' color)
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 3; // Thick white border to make it pop
 
     ctx.beginPath();
-    ctx.arc(x, y, dotRadius, 0, 2 * Math.PI, false);
-    ctx.fillStyle = '#ff4d4f'; // Ant Design error color
-    ctx.fill();
 
-    // Add 1.5px white border to make it pop against the icon
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#ffffff';
+    // Draw Pill Shape (Manual Path for compatibility)
+    const x = centerX - width / 2;
+    const y = centerY - height / 2;
+    const r = height / 2;
+
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+
+    ctx.fill();
     ctx.stroke();
 
-    // If count is needed, we could draw text here. 
-    // User asked for "small circle", so a simple dot is safer and cleaner unless requested otherwise.
-    // "malenkiy kruzhochek" = small circle.
+    // 5. Draw Text
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Font size adjustment for 2-3 digits
+    if (text.length > 1) {
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(text, centerX, centerY + 1);
+    } else {
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText(text, centerX, centerY + 1);
+    }
 
-    // Update favicon
+    // 6. Apply
     link.href = canvas.toDataURL('image/png');
-};
+}
