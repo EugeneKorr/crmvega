@@ -596,7 +596,11 @@ class OrderMessagesService {
             .order('created_at', { ascending: false })
             .limit(limit);
 
-        if (currentMainId || allRelatedOrderIds.length > 0) {
+        if (internalId) {
+            // Strict filtering: If viewing a specific order, show ONLY internal messages for this order
+            internalQuery = internalQuery.eq('order_id', internalId);
+        } else if (currentMainId || allRelatedOrderIds.length > 0) {
+            // Fallback (e.g. Contact View): Show internal messages for all related orders
             const filters: string[] = [];
             if (currentMainId) filters.push(`main_id.eq.${currentMainId}`);
             if (allRelatedOrderIds.length > 0) filters.push(...allRelatedOrderIds.map(id => `order_id.eq.${id}`));
