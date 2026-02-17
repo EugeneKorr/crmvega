@@ -145,6 +145,12 @@ class ContactService {
 
         const allMainIds = [...new Set(allOrders?.map(o => o.main_id).filter(Boolean) || [])];
 
+        // Collect telegram_user_ids for direct message lookup
+        const tgUserIds = contacts
+            .map(c => c.telegram_user_id)
+            .filter(Boolean)
+            .map(String);
+
         const { data: allMessages } = await supabase
             .rpc('get_latest_messages', {
                 target_main_ids: allMainIds.map(String),
@@ -158,6 +164,23 @@ class ContactService {
                 lastMessageByMainId[mainId] = msg;
             }
         });
+
+        // Also fetch latest messages by telegram_user_id (for messages with unknown main_id)
+        let lastMessageByTgId: Record<string, any> = {};
+        if (tgUserIds.length > 0) {
+            const { data: tgMessages } = await supabase
+                .from('messages')
+                .select('telegram_user_id, content, "Created Date", author_type, is_read, main_id')
+                .in('telegram_user_id', tgUserIds)
+                .order('Created Date', { ascending: false });
+
+            tgMessages?.forEach((msg: any) => {
+                const tgId = String(msg.telegram_user_id);
+                if (!lastMessageByTgId[tgId]) {
+                    lastMessageByTgId[tgId] = msg;
+                }
+            });
+        }
 
         const { data: unreadData } = await supabase
             .rpc('get_unread_client_counts', {
@@ -192,6 +215,17 @@ class ContactService {
                     }
                 }
             });
+
+            // Check telegram_user_id-based messages (may be newer)
+            const tgId = contact.telegram_user_id ? String(contact.telegram_user_id) : null;
+            if (tgId && lastMessageByTgId[tgId]) {
+                const tgMsg = lastMessageByTgId[tgId];
+                const tgMsgTime = new Date(tgMsg['Created Date']).getTime();
+                if (!lastMessageTime || tgMsgTime > lastMessageTime) {
+                    lastMessage = tgMsg;
+                    lastMessageTime = tgMsgTime;
+                }
+            }
 
             let displayName: string | null = null;
             if (contact.first_name || contact.last_name) {

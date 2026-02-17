@@ -134,10 +134,13 @@ export const UnifiedContactChat: React.FC<UnifiedContactChatProps> = ({
                         </div>
                         {group.msgs.map(msg => {
                             if (msg.is_system) {
+                                const sysDate = msg.sort_date || msg.created_at || msg['Created Date'];
+                                const sysTime = sysDate ? new Date(sysDate).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
                                 return (
                                     <div key={`${msg.source_type}_${msg.id}`} style={{ textAlign: 'center', margin: '12px 0' }}>
                                         <div style={{ background: '#f0f0f0', display: 'inline-block', padding: '6px 14px', borderRadius: 16, fontSize: 12, color: '#8c8c8c', maxWidth: '80%', wordWrap: 'break-word' }}>
                                             {msg.content}
+                                            {sysTime && <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 2 }}>{sysTime}</span>}
                                         </div>
                                     </div>
                                 );
