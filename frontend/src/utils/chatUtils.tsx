@@ -33,10 +33,10 @@ export const parseDate = (date: string | number | Date): Date => {
 export const formatTime = (date?: string | number): string => {
     if (!date) return '';
     const d = parseDate(date);
-    // Force Europe/Madrid
     return d.toLocaleTimeString('ru-RU', {
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
         timeZone: 'Europe/Madrid'
     });
 };
