@@ -17,6 +17,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import type { MenuProps } from 'antd';
 import BottomNavigation from './BottomNavigation';
+import { updateFavicon } from '../utils/favicon';
 
 const { Header, Sider, Content } = Layout;
 const { useBreakpoint } = Grid;
@@ -188,6 +189,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   useEffect(() => {
     document.title = unreadTotal > 0 ? `(${unreadTotal}) CRM` : 'CRM';
+    updateFavicon(unreadTotal);
   }, [unreadTotal]);
 
   // Supabase Realtime Global Subscription
