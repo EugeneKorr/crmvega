@@ -314,7 +314,7 @@ export const UnifiedMessageBubble: React.FC<UnifiedMessageBubbleProps & {
                         <div style={{ ...styles, padding: '10px 14px', minWidth: 60, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', position: 'relative' }}>
                             {!isFromClient && (
                                 <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.9, marginBottom: 2, textAlign: isRight ? 'right' : 'left' }}>
-                                    {msg.sender?.name || msg.user || 'Оператор'}
+                                    {msg.sender?.name || msg.author_type || 'Оператор'}
                                 </div>
                             )}
 
