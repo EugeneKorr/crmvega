@@ -24,10 +24,18 @@ export const getAvatarColor = (authorType?: string): string => {
     return colors[authorType] || '#8c8c8c';
 };
 
+const MADRID_TZ = 'Europe/Madrid';
+
 // Parse date string safely
+// Bubble.io sends timestamps as "2026-04-21 12:03:15" (no 'Z', no offset) — these are UTC
 export const parseDate = (date: string | number | Date): Date => {
     if (date instanceof Date) return date;
     if (!date) return new Date();
+    if (typeof date === 'string' &&
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(date) &&
+        !date.includes('+') && !date.endsWith('Z')) {
+        return new Date(date.replace(' ', 'T') + 'Z');
+    }
     return new Date(date);
 };
 export const formatTime = (date?: string | number): string => {
@@ -37,7 +45,30 @@ export const formatTime = (date?: string | number): string => {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-        timeZone: 'Europe/Madrid'
+        timeZone: MADRID_TZ
+    });
+};
+
+export const formatMadridDateTime = (date?: string | number | Date): string => {
+    if (!date) return '';
+    const d = parseDate(date as string | number | Date);
+    return d.toLocaleString('ru-RU', {
+        day: 'numeric',
+        month: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: MADRID_TZ
+    });
+};
+
+export const formatMadridDate = (date?: string | number | Date): string => {
+    if (!date) return '';
+    const d = parseDate(date as string | number | Date);
+    return d.toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        timeZone: MADRID_TZ
     });
 };
 
@@ -48,7 +79,7 @@ export const formatDate = (date?: string | number): string => {
     const now = new Date();
 
     const madridOptions: Intl.DateTimeFormatOptions = {
-        timeZone: 'Europe/Madrid',
+        timeZone: MADRID_TZ,
         year: 'numeric',
         month: 'numeric',
         day: 'numeric'
@@ -76,7 +107,7 @@ export const formatDate = (date?: string | number): string => {
     return d.toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'long',
-        timeZone: 'Europe/Madrid'
+        timeZone: MADRID_TZ
     });
 };
 

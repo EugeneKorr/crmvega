@@ -237,21 +237,26 @@ const InboxPage: React.FC = () => {
     };
 
     const formatMessageDate = (dateString: string) => {
+        const TZ = 'Europe/Madrid';
         const date = new Date(dateString);
         const now = new Date();
-        const isToday = date.toDateString() === now.toDateString();
+        const todayStr = now.toLocaleDateString('ru-RU', { timeZone: TZ });
+        const dateStr = date.toLocaleDateString('ru-RU', { timeZone: TZ });
+        const isToday = dateStr === todayStr;
 
         if (isToday) {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
         }
 
-        const isThisYear = date.getFullYear() === now.getFullYear();
+        const thisYearStr = now.toLocaleDateString('ru-RU', { year: 'numeric', timeZone: TZ });
+        const dateYearStr = date.toLocaleDateString('ru-RU', { year: 'numeric', timeZone: TZ });
+        const isThisYear = thisYearStr === dateYearStr;
         if (isThisYear) {
-            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' +
-                date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: TZ }) + ', ' +
+                date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
         }
 
-        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ });
     };
 
     const screens = Grid.useBreakpoint();

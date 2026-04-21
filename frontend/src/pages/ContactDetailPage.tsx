@@ -255,7 +255,7 @@ const ContactDetailPage: React.FC = () => {
                     <Descriptions column={1} layout={isMobile ? 'vertical' : 'horizontal'}>
                       <Descriptions.Item label="Email">{contact.email || '-'}</Descriptions.Item>
                       <Descriptions.Item label="Телефон">{contact.phone || '-'}</Descriptions.Item>
-                      <Descriptions.Item label="Дата создания">{new Date(contact.created_at).toLocaleDateString()}</Descriptions.Item>
+                      <Descriptions.Item label="Дата создания">{new Date(contact.created_at).toLocaleDateString('ru-RU', { timeZone: 'Europe/Madrid' })}</Descriptions.Item>
                       <Descriptions.Item label="Комментарий">{contact.comment || '-'}</Descriptions.Item>
                     </Descriptions>
                   </Card>
@@ -331,7 +331,7 @@ const ContactDetailPage: React.FC = () => {
                           </div>
                           <div style={{ marginTop: 8 }}>{note.content}</div>
                           <div style={{ marginTop: 4, fontSize: 11, color: '#aaa' }}>
-                            {note.manager?.name} • {new Date(note.created_at).toLocaleString('ru-RU')}
+                            {note.manager?.name} • {new Date(note.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Madrid' })}
                           </div>
                         </Card>
                       );

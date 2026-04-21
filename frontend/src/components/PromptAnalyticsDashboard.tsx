@@ -361,7 +361,7 @@ const PromptAnalyticsDashboard: React.FC = () => {
                 title: 'Дата',
                 dataIndex: 'date',
                 key: 'date',
-                render: (date: string) => new Date(date).toLocaleDateString('ru-RU'),
+                render: (date: string) => new Date(date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Madrid' }),
               },
               {
                 title: 'Всего',
@@ -429,7 +429,7 @@ const PromptAnalyticsDashboard: React.FC = () => {
               dataIndex: 'created_at',
               key: 'created_at',
               width: 100,
-              render: (date: string) => new Date(date).toLocaleDateString('ru-RU'),
+              render: (date: string) => new Date(date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Madrid' }),
             },
             {
               title: 'Вопрос клиента',

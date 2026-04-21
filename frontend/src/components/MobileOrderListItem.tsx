@@ -51,7 +51,8 @@ const MobileOrderListItem: React.FC<MobileOrderListItemProps> = ({ order, onClic
     // Format date
     const dateDisplay = new Date(order.created_at).toLocaleDateString('ru-RU', {
         day: 'numeric',
-        month: 'short'
+        month: 'short',
+        timeZone: 'Europe/Madrid'
     });
 
     return (

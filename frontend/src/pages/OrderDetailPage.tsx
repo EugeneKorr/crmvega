@@ -355,8 +355,8 @@ const OrderDetailPage: React.FC = () => {
         <FieldItem label="Адрес доставки" value={order.End_address || order.New_address} />
         <FieldItem label="Комментарий" value={order.description || order.Comment} />
         <FieldItem label="Источник" value={order.source} />
-        <FieldItem label="Создано" value={new Date(order.created_at).toLocaleString('ru-RU')} />
-        <FieldItem label="Закрыто" value={order.closed_date ? new Date(order.closed_date).toLocaleDateString('ru-RU') : null} />
+        <FieldItem label="Создано" value={new Date(order.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Madrid' })} />
+        <FieldItem label="Закрыто" value={order.closed_date ? new Date(order.closed_date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Madrid' }) : null} />
       </div>
     </div>
   );
@@ -662,7 +662,7 @@ const OrderDetailPage: React.FC = () => {
                                   {NOTE_PRIORITIES[note.priority]?.icon} {NOTE_PRIORITIES[note.priority]?.label}
                                 </Tag>
                                 <Text type="secondary" style={{ fontSize: 11 }}>
-                                  {new Date(note.created_at).toLocaleString('ru-RU')}
+                                  {new Date(note.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Madrid' })}
                                 </Text>
                               </div>
                               <Text style={{ fontSize: 13 }}>{note.content}</Text>
@@ -700,7 +700,7 @@ const OrderDetailPage: React.FC = () => {
                             }}>
                               <div style={{ marginBottom: 4 }}>{item.content}</div>
                               <Text type="secondary" style={{ fontSize: 11 }}>
-                                {new Date(item.created_at).toLocaleString('ru-RU')}
+                                {new Date(item.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Madrid' })}
                               </Text>
                             </div>
                           )}
@@ -810,7 +810,7 @@ const OrderDetailPage: React.FC = () => {
                                     {NOTE_PRIORITIES[note.priority]?.icon} {NOTE_PRIORITIES[note.priority]?.label}
                                   </Tag>
                                   <Text type="secondary" style={{ fontSize: 11 }}>
-                                    {new Date(note.created_at).toLocaleString('ru-RU')}
+                                    {new Date(note.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Madrid' })}
                                   </Text>
                                 </div>
                                 <Text style={{ fontSize: 13 }}>{note.content}</Text>
@@ -859,7 +859,7 @@ const OrderDetailPage: React.FC = () => {
                                     {item.sender?.name || 'Система'}
                                   </Text>
                                   <Text type="secondary" style={{ fontSize: 11 }}>
-                                    {new Date(item.created_at).toLocaleString('ru-RU')}
+                                    {new Date(item.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Madrid' })}
                                   </Text>
                                 </div>
                               </div>

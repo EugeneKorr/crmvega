@@ -756,7 +756,7 @@ const OrdersPage: React.FC = () => {
       title: 'Дата создания',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date: string) => new Date(date).toLocaleDateString()
+      render: (date: string) => new Date(date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Madrid' })
     }
   ], [handleStatusChange, sortedStatusOptions]);
 

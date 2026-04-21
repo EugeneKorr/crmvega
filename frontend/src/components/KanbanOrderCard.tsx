@@ -15,13 +15,13 @@ interface KanbanOrderCardProps {
     onEditContact?: (contact: Contact) => void;
 }
 
-// Helper functions moved outside component
+const TZ = 'Europe/Madrid';
+
 const formatDate = (dateString: string) => {
-    // Quick format without Moment.js overhead
     const date = new Date(dateString);
-    const day = date.getDate();
-    const month = date.toLocaleString('ru-RU', { month: 'short' }).replace('.', '');
-    const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const day = date.toLocaleString('ru-RU', { day: 'numeric', timeZone: TZ });
+    const month = date.toLocaleString('ru-RU', { month: 'short', timeZone: TZ }).replace('.', '');
+    const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
     return `${day} ${month}, ${time}`;
 };
 
