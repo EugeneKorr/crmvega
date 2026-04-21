@@ -21,6 +21,7 @@ import orderMessagesRoutes from './routes/orderMessages';
 import tagsRoutes from './routes/tags';
 import uploadRoutes from './routes/upload';
 import errorBotRoutes from './routes/errorBot';
+import logsRoutes from './routes/logs';
 import json5Parser from './middleware/json5Parser';
 
 
@@ -91,6 +92,7 @@ app.use('/api/order-messages', orderMessagesRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/error-bot', errorBotRoutes);
+app.use('/api/logs', logsRoutes);
 
 // Логирование всех зарегистрированных роутов
 console.log('✅ Routes registered:');
