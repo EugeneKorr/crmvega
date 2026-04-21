@@ -67,12 +67,10 @@ class BubbleController {
 
     async updateStatus(req: Request, res: Response) {
         try {
-            // processStatusUpdate expects { leads: { status: [...] } } or similar structure?
-            // Service check: if (!leads || !leads.status ...)
-            // So if we pass req.body.leads, then req.body must look like { leads: { status: [...] } }
-            // If the webhook sends { status: [...] } directly inside leads property?
-            // The JS code did `req.body.leads`, so I'll trust that.
-            const result = await bubbleService.processStatusUpdate(req.body.leads);
+            // Bubble sends flat body: { id, status_id }
+            // Normalize to expected format: { status: [{ id, status_id }] }
+            const leads = req.body.leads ?? { status: [req.body] };
+            const result = await bubbleService.processStatusUpdate(leads);
             res.json({ success: true, ...result });
         } catch (error: any) {
             console.error('Error processing status update:', error);

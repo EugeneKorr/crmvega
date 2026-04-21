@@ -57,7 +57,9 @@ const KanbanOrderCard: React.FC<KanbanOrderCardProps> = memo(({ order, onOrderCl
         zIndex: isDragging ? 999 : 'auto',
     };
 
+    const isNight = order.OrderName?.startsWith('Ночная');
     const mainInfoString = [
+        isNight ? '🌙 Ночная' : '',
         clean(order.DeliveryTime),
         clean(order.NextDay),
         clean(order.CityEsp02),
