@@ -31,9 +31,8 @@ const MADRID_TZ = 'Europe/Madrid';
 export const parseDate = (date: string | number | Date): Date => {
     if (date instanceof Date) return date;
     if (!date) return new Date();
-    if (typeof date === 'string' &&
-        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(date) &&
-        !date.includes('+') && !date.endsWith('Z')) {
+    if (typeof date === 'string' && !date.includes('+') && !date.endsWith('Z') &&
+        /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(date)) {
         return new Date(date.replace(' ', 'T') + 'Z');
     }
     return new Date(date);
