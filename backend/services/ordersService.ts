@@ -314,28 +314,13 @@ class OrdersService {
         const settings = manager?.notification_settings || {};
         const { all_active = true, statuses = [] } = settings;
 
-        // Fetch all unique main_ids that have unread messages using optimized RPC
-        const { data: unreadMainIds, error: rpcError } = await supabase.rpc('get_unread_main_ids');
-        if (rpcError) throw rpcError;
-
-        if (!unreadMainIds || unreadMainIds.length === 0) return 0;
-
-        const distinctMainIds = unreadMainIds.map((m: any) => m.main_id);
-
-        // Count distinct orders that have unread messages and match the status filter
-        let query = supabase
-            .from('orders')
-            .select('id', { count: 'exact', head: true })
-            .in('main_id', distinctMainIds);
-
-        if (!all_active && statuses && statuses.length > 0) {
-            query = query.in('status', statuses);
-        }
-
-        const { count, error } = await query;
+        const { data, error } = await supabase.rpc('get_unread_order_count', {
+            p_all_active: all_active,
+            p_statuses: statuses.length > 0 ? statuses : [],
+        });
         if (error) throw error;
 
-        return count || 0;
+        return data || 0;
     }
 
     // --- Private Helpers ---
