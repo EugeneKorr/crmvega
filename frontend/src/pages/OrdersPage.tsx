@@ -253,7 +253,8 @@ const OrdersPage: React.FC = () => {
   const [visibleStatuses, setVisibleStatuses] = useState<OrderStatus[]>(() => {
     try {
       const saved = localStorage.getItem('crm_visible_statuses');
-      return saved ? JSON.parse(saved) : DEFAULT_VISIBLE_STATUSES;
+      const parsed = saved ? JSON.parse(saved) : null;
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_VISIBLE_STATUSES;
     } catch {
       return DEFAULT_VISIBLE_STATUSES;
     }
