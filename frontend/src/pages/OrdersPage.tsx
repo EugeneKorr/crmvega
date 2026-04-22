@@ -401,7 +401,6 @@ const OrdersPage: React.FC = () => {
 
   useEffect(() => {
     // refreshOrders(); // Hook handles initial fetch
-    fetchContacts();
     fetchTags();
     fetchManagers();
     // Socket setup moved to separate effect (in hook)
@@ -587,6 +586,7 @@ const OrdersPage: React.FC = () => {
   const openCreateModal = (status: OrderStatus) => {
     setCreateStatus(status);
     form.setFieldsValue({ status });
+    if (contacts.length === 0) fetchContacts();
     setIsCreateModalVisible(true);
   };
 
