@@ -349,8 +349,15 @@ class OrdersService {
             const { data: contactResolve } = await supabase.from('contacts').select('id').eq('telegram_user_id', contact_id).maybeSingle();
             query.eq('contact_id', contactResolve ? contactResolve.id : contact_id);
         }
-        if (status) query.eq('status', status);
-        if (tag_id) query.eq('order_tags.tag_id', tag_id); // Note: handled before .range in route, but inner join works
+        if (status) {
+            query.eq('status', status);
+        } else if (statuses) {
+            query.in('status', Array.isArray(statuses) ? statuses : (statuses as string).split(','));
+        } else {
+            // По умолчанию скрываем закрытые статусы — они грузят 99% объёма данных
+            query.not('status', 'in', '(completed,duplicate,scammer,client_rejected)');
+        }
+        if (tag_id) query.eq('order_tags.tag_id', tag_id);
         if (dateFrom) query.gte('created_at', dateFrom);
         if (dateTo) query.lte('created_at', dateTo);
         if (amountMin) query.gte('SumInput', parseFloat(amountMin));
@@ -358,7 +365,6 @@ class OrdersService {
         if (currency) query.eq('CurrPair1', currency);
         if (sources) query.in('source', Array.isArray(sources) ? sources : (sources as string).split(','));
         if (closedBy) query.eq('closed_by_manager_id', parseInt(closedBy));
-        if (statuses) query.in('status', Array.isArray(statuses) ? statuses : (statuses as string).split(','));
         if (amountOutputMin) query.gte('SumOutput', parseFloat(amountOutputMin));
         if (amountOutputMax) query.lte('SumOutput', parseFloat(amountOutputMax));
         if (currencyOutput) query.eq('CurrPair2', currencyOutput);
