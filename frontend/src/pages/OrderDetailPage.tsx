@@ -5,7 +5,6 @@ import {
   Space,
   Button,
   Tag,
-  Avatar,
   List,
   Input,
   Form,
@@ -21,7 +20,6 @@ import {
 } from 'antd';
 import {
   ArrowLeftOutlined,
-  UserOutlined,
   PhoneOutlined,
   MailOutlined,
   DollarOutlined,
@@ -37,6 +35,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Order, Note, ORDER_STATUSES, NOTE_PRIORITIES, InternalMessage } from '../types';
 import { notesAPI, orderMessagesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useClientProfiles } from '../contexts/ClientProfileContext';
+import ClientAvatar from '../components/ClientAvatar';
+import { formatAnimalSubtitle } from '../utils/clientProfile';
 import { useOrder } from '../hooks/useOrder';
 import OrderChat from '../components/OrderChat';
 import { OrderTags } from '../components/OrderTags';
@@ -49,6 +50,7 @@ const OrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { manager } = useAuth();
+  const { getProfile } = useClientProfiles();
   const { onlineUsers, viewingOrder } = usePresence();
   // Notes state remains local for now
   const [notes, setNotes] = useState<Note[]>([]);
@@ -274,12 +276,21 @@ const OrderDetailPage: React.FC = () => {
           </div>
           <Space direction="vertical" style={{ width: '100%' }} size={8}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar
-                style={{ backgroundColor: '#667eea' }}
-                icon={<UserOutlined />}
+              <ClientAvatar
+                profile={getProfile((order.contact as any)?.telegram_user_id)}
                 size={32}
               />
-              <Text strong>{order.contact.name}</Text>
+              <div>
+                <Text strong>{order.contact.name}</Text>
+                {(() => {
+                  const p = getProfile((order.contact as any)?.telegram_user_id);
+                  return p ? (
+                    <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 1 }}>
+                      {formatAnimalSubtitle(p)}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
             </div>
             {clean(order.contact.phone) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#595959' }}>

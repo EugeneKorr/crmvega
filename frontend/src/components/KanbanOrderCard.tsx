@@ -2,9 +2,11 @@ import React, { memo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Order, ORDER_STATUSES, Contact, OrderStatus } from '../types';
-import { EditOutlined, UserOutlined } from '@ant-design/icons';
+import { EditOutlined } from '@ant-design/icons';
 import { Select, Space } from 'antd';
 import styles from './KanbanOrderCard.module.css';
+import { useClientProfiles } from '../contexts/ClientProfileContext';
+import ClientAvatar from './ClientAvatar';
 
 const { Option } = Select;
 
@@ -41,6 +43,11 @@ const SORTED_STATUS_OPTIONS = Object.entries(ORDER_STATUSES)
 
 // Memoized component for performance
 const KanbanOrderCard: React.FC<KanbanOrderCardProps> = memo(({ order, onOrderClick, onStatusChange, onEditContact }) => {
+    const { getProfile } = useClientProfiles();
+    const contactTgId = order.contact && 'telegram_user_id' in order.contact
+        ? (order.contact as any).telegram_user_id : null;
+    const clientProfile = getProfile(contactTgId);
+
     const {
         attributes,
         listeners,
@@ -158,7 +165,7 @@ const KanbanOrderCard: React.FC<KanbanOrderCardProps> = memo(({ order, onOrderCl
                 {/* Last Message */}
                 <div className={styles.lastMessage}>
                     <div className={styles.avatar}>
-                        <UserOutlined style={{ fontSize: 10 }} />
+                        <ClientAvatar profile={clientProfile} size={20} />
                     </div>
                     <div className={styles.messageText}>
                         {order.last_message?.content || ''}

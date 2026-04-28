@@ -81,7 +81,7 @@ class OrdersService {
         if (isMinimal) {
             dbQuery = supabase
                 .from('orders')
-                .select(`id, contact_id, "OrderName", "SumInput", "CurrPair1", status, created_at, main_id, "CityEsp02", "DeliveryTime", "NextDay", "SumOutput", "CurrPair2", contact:contacts(id, name), manager:managers!deals_manager_id_fkey(id, name)${tag_id ? ', order_tags!inner(tag_id)' : ''}`)
+                .select(`id, contact_id, "OrderName", "SumInput", "CurrPair1", status, created_at, main_id, "CityEsp02", "DeliveryTime", "NextDay", "SumOutput", "CurrPair2", contact:contacts(id, name, telegram_user_id), manager:managers!deals_manager_id_fkey(id, name)${tag_id ? ', order_tags!inner(tag_id)' : ''}`)
                 .order('created_at', { ascending: false });
         } else {
             dbQuery = supabase
@@ -338,8 +338,9 @@ class OrdersService {
             query.eq('status', status);
         } else if (statuses) {
             query.in('status', Array.isArray(statuses) ? statuses : (statuses as string).split(','));
-        } else {
-            // По умолчанию скрываем закрытые статусы — они грузят 99% объёма данных
+        } else if (!contact_id) {
+            // Скрываем закрытые статусы только в общих списках (kanban/inbox).
+            // При запросе по конкретному контакту показываем всю историю.
             query.not('status', 'in', '(completed,duplicate,scammer,client_rejected)');
         }
         if (tag_id) query.eq('order_tags.tag_id', tag_id);

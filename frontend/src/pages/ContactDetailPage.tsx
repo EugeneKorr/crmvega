@@ -30,6 +30,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Contact, Order, Note, NOTE_PRIORITIES, ORDER_STATUSES } from '../types';
 import { contactsAPI, ordersAPI, notesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useClientProfiles } from '../contexts/ClientProfileContext';
+import ClientAvatar from '../components/ClientAvatar';
+import { formatAnimalSubtitle } from '../utils/clientProfile';
 import { UnifiedContactChat } from '../components/UnifiedContactChat';
 
 const { Title, Text } = Typography;
@@ -40,6 +43,7 @@ const ContactDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { manager } = useAuth();
+  const { getProfile } = useClientProfiles();
   const [contact, setContact] = useState<Contact | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -195,10 +199,17 @@ const ContactDetailPage: React.FC = () => {
           <Space align="start">
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/contacts')} shape="circle" />
             <Space size={16} style={{ marginLeft: 8 }}>
-              <Avatar size={isMobile ? 48 : 64} icon={<UserOutlined />} src={contact.avatar_url} />
+              <ClientAvatar profile={getProfile(contact.telegram_user_id)} size={isMobile ? 48 : 64} />
               <div>
                 <Title level={isMobile ? 4 : 2} style={{ margin: 0 }}>{contact.name}</Title>
-                <Text type="secondary">{contact.position || 'Клиент'}</Text>
+                {(() => {
+                  const p = getProfile(contact.telegram_user_id);
+                  return p ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>{formatAnimalSubtitle(p)}</Text>
+                  ) : (
+                    <Text type="secondary">{contact.position || 'Клиент'}</Text>
+                  );
+                })()}
               </div>
             </Space>
           </Space>

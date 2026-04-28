@@ -147,17 +147,20 @@ const AppRoutes: React.FC = () => {
 };
 
 import { PresenceProvider } from './context/PresenceContext';
+import { ClientProfileProvider } from './contexts/ClientProfileContext';
 
 const App: React.FC = () => {
   console.log('🚀 ТЕСТОВАЯ СРЕДА (STAGING)');
   return (
     <ConfigProvider locale={ruRU}>
       <AuthProvider>
-        <PresenceProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
-        </PresenceProvider>
+        <ClientProfileProvider>
+          <PresenceProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </PresenceProvider>
+        </ClientProfileProvider>
       </AuthProvider>
     </ConfigProvider>
   );

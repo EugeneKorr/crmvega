@@ -4,11 +4,12 @@ import { supabase } from '../lib/supabase';
 import { InboxContact, Order, ORDER_STATUSES } from '../types';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useClientProfiles } from '../contexts/ClientProfileContext';
+import ClientAvatar from '../components/ClientAvatar';
 import {
     Layout,
     List,
     Input,
-    Avatar,
     Badge,
     Button,
     Spin,
@@ -20,7 +21,6 @@ import {
 } from 'antd';
 import {
     SearchOutlined,
-    UserOutlined,
     ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { UnifiedContactChat } from '../components/UnifiedContactChat';
@@ -37,6 +37,7 @@ interface ExtendedInboxContact extends InboxContact {
 
 const InboxPage: React.FC = () => {
     const { manager } = useAuth();
+    const { getProfile } = useClientProfiles();
     const [searchParams, setSearchParams] = useSearchParams();
     const [contacts, setContacts] = useState<ExtendedInboxContact[]>([]);
     const [selectedContact, setSelectedContact] = useState<ExtendedInboxContact | null>(null);
@@ -345,7 +346,7 @@ const InboxPage: React.FC = () => {
                                             <List.Item.Meta
                                                 avatar={
                                                     <Badge count={contact.unread_count || 0} size="small" offset={[0, 32]}>
-                                                        <Avatar icon={<UserOutlined />} src={contact.avatar_url} />
+                                                        <ClientAvatar profile={getProfile(contact.telegram_user_id)} size={32} />
                                                     </Badge>
                                                 }
                                                 title={
@@ -427,9 +428,7 @@ const InboxPage: React.FC = () => {
                                             type="text"
                                         />
                                     )}
-                                    <Avatar size={40} src={selectedContact.avatar_url} icon={<UserOutlined />} style={{ backgroundColor: '#87d068' }}>
-                                        {!selectedContact.avatar_url && selectedContact.name?.[0]}
-                                    </Avatar>
+                                    <ClientAvatar profile={getProfile(selectedContact.telegram_user_id)} size={40} />
                                     <div>
                                         <Title level={5} style={{ margin: 0 }}>{selectedContact.name}</Title>
                                         <Space size="small">
