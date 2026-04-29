@@ -1,14 +1,12 @@
 import type { ThemeConfig } from 'antd';
 import rawTokens from './tokens.json';
 
-// Распарсить tokens.json (он содержит экранированные символы)
-const tokens = typeof rawTokens === 'string'
-  ? JSON.parse(JSON.parse(rawTokens))
-  : rawTokens;
+// tokens.json импортируется Vite как объект напрямую
+const tokens = rawTokens as any;
 
 // Извлечь основные цвета из light theme
-const lightColors = tokens.colors.light;
-const semanticColors = tokens.colors.semantic;
+const lightColors = tokens.colors?.light || {};
+const semanticColors = tokens.colors?.semantic || {};
 
 export const theme: ThemeConfig = {
   token: {
