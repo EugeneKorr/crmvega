@@ -1,6 +1,8 @@
 import React from 'react';
 import { Button, Typography } from 'antd';
 import { RobotOutlined, CloseOutlined } from '@ant-design/icons';
+import { useDesign } from '../contexts/DesignContext';
+import styles from './SuggestionBar.module.css';
 
 export interface SuggestionData {
   id: number;
@@ -16,35 +18,29 @@ interface SuggestionBarProps {
 }
 
 export const SuggestionBar: React.FC<SuggestionBarProps> = ({ suggestion, onInsert, onIgnore }) => {
+  const { useNewDesign } = useDesign();
+
   if (!suggestion) return null;
 
+  const containerClass = `${styles.container} ${useNewDesign ? styles.newDesign : styles.oldDesign}`;
+  const iconClass = `${styles.icon} ${useNewDesign ? styles.newDesign : styles.oldDesign}`;
+  const messageClass = `${styles.message} ${useNewDesign ? styles.newDesign : styles.oldDesign}`;
+
   return (
-    <div
-      style={{
-        background: '#E6F4FF',
-        border: '1px solid #91CAFF',
-        borderRadius: 8,
-        padding: '8px 12px',
-        margin: '0 8px 6px',
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8,
-        animation: 'slideDown 0.2s ease',
-      }}
-    >
-      <RobotOutlined style={{ color: '#1677ff', marginTop: 3, flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+    <div className={containerClass}>
+      <RobotOutlined className={iconClass} />
+      <div className={styles.content}>
+        <Typography.Text type="secondary" className={styles.label}>
           Предложение AI
         </Typography.Text>
         <Typography.Paragraph
-          style={{ margin: '2px 0 0', fontSize: 13, color: '#1d1d1d' }}
+          className={messageClass}
           ellipsis={{ rows: 3, expandable: true }}
         >
           {suggestion.suggested_response}
         </Typography.Paragraph>
       </div>
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center', marginTop: 2 }}>
+      <div className={styles.actions}>
         <Button
           size="small"
           type="primary"
@@ -58,12 +54,6 @@ export const SuggestionBar: React.FC<SuggestionBarProps> = ({ suggestion, onInse
           onClick={() => onIgnore(suggestion)}
         />
       </div>
-      <style>{`
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 };

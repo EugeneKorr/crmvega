@@ -1,6 +1,7 @@
 import React from 'react';
 import { Switch, Tooltip } from 'antd';
 import { RobotOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import styles from './AgentModeToggle.module.css';
 
 interface AgentModeToggleProps {
   mode: 'auto' | 'off';
@@ -10,26 +11,28 @@ interface AgentModeToggleProps {
 
 export const AgentModeToggle: React.FC<AgentModeToggleProps> = ({ mode, loading, onChange }) => {
   const isAuto = mode === 'auto';
+  const tooltipText = isAuto
+    ? 'AI подсказки включены — нажми чтобы выключить'
+    : 'AI подсказки выключены — нажми чтобы включить';
 
   return (
-    <Tooltip title={isAuto ? 'AI подсказки включены — нажми чтобы выключить' : 'AI подсказки выключены — нажми чтобы включить'}>
+    <Tooltip title={tooltipText}>
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+        className={styles.container}
         onClick={() => onChange(isAuto ? 'off' : 'auto')}
       >
         {isAuto
-          ? <RobotOutlined style={{ color: '#1677ff', fontSize: 16 }} />
-          : <PauseCircleOutlined style={{ color: '#8c8c8c', fontSize: 16 }} />
+          ? <RobotOutlined className={styles.iconActive} />
+          : <PauseCircleOutlined className={styles.iconInactive} />
         }
         <Switch
           checked={isAuto}
           loading={loading}
           size="small"
-          style={{ background: isAuto ? '#1677ff' : '#d9d9d9' }}
           onChange={(checked) => onChange(checked ? 'auto' : 'off')}
           onClick={(_checked, e) => e.stopPropagation()}
         />
-        <span style={{ fontSize: 12, color: isAuto ? '#1677ff' : '#8c8c8c' }}>
+        <span className={`${styles.label} ${isAuto ? styles.labelActive : styles.labelInactive}`}>
           {isAuto ? 'Авто' : 'Выкл'}
         </span>
       </div>

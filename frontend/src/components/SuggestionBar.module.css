@@ -1,0 +1,78 @@
+.container {
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0 8px 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  animation: slideDown 0.2s ease;
+  border: 1px solid;
+}
+
+.container.newDesign {
+  background: rgb(230, 244, 255);
+  border-color: rgb(145, 202, 255);
+}
+
+.container.oldDesign {
+  background: #E6F4FF;
+  border-color: #91CAFF;
+}
+
+.icon {
+  margin-top: 3px;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.icon.newDesign {
+  color: rgb(22, 119, 255);
+}
+
+.icon.oldDesign {
+  color: #1677ff;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.label {
+  font-size: 11px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.message {
+  font-size: 13px;
+  margin: 2px 0 0;
+  display: block;
+}
+
+.message.newDesign {
+  color: rgb(29, 29, 29);
+}
+
+.message.oldDesign {
+  color: #1d1d1d;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+  margin-top: 2px;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,28 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.iconActive {
+  color: rgb(22, 119, 255);
+  font-size: 16px;
+}
+
+.iconInactive {
+  color: rgb(140, 140, 140);
+  font-size: 16px;
+}
+
+.label {
+  font-size: 12px;
+}
+
+.labelActive {
+  color: rgb(22, 119, 255);
+}
+
+.labelInactive {
+  color: rgb(140, 140, 140);
+}
