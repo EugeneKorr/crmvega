@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
+import { theme } from './theme';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import MainLayout from './components/MainLayout';
 import Login from './pages/Login';
@@ -152,7 +153,7 @@ import { ClientProfileProvider } from './contexts/ClientProfileContext';
 const App: React.FC = () => {
   console.log('🚀 ТЕСТОВАЯ СРЕДА (STAGING)');
   return (
-    <ConfigProvider locale={ruRU}>
+    <ConfigProvider locale={ruRU} theme={theme}>
       <AuthProvider>
         <ClientProfileProvider>
           <PresenceProvider>
