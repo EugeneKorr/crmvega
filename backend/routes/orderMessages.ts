@@ -54,4 +54,7 @@ router.get('/:orderId/internal/unread', auth, (req, res) => controller.getUnread
 // --- Timeline ---
 router.get('/:orderId/timeline', auth, (req, res) => controller.getTimeline(req, res));
 
+// --- Suggestion logging (ignore action) ---
+router.post('/:orderId/suggestion-log', auth, (req, res) => controller.logSuggestion(req, res));
+
 export default router;

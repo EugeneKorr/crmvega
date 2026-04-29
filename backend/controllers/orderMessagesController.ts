@@ -36,19 +36,65 @@ class OrderMessagesController {
             if (!manager) return res.status(401).json({ error: 'Unauthorized' });
 
             const { orderId } = req.params;
-            const { content, reply_to_message_id } = req.body;
+            const {
+                content, reply_to_message_id,
+                suggestion_id, suggestion_text, suggestion_was_edited, shown_at,
+            } = req.body;
 
             const result = await orderService.sendClientMessage({
                 orderId: orderId as string,
                 content,
                 replyToMessageId: reply_to_message_id,
-                managerId: manager.id
+                managerId: manager.id,
+                suggestionId: suggestion_id ?? null,
+                suggestionText: suggestion_text ?? null,
+                suggestionWasEdited: suggestion_was_edited ?? false,
+                shownAt: shown_at ?? null,
             });
 
             res.json(result);
         } catch (error: any) {
             console.error('Error sending client message:', error);
             res.status(400).json({ error: error.message });
+        }
+    }
+
+    async logSuggestion(req: Request, res: Response) {
+        try {
+            const { orderId } = req.params;
+            const { suggestion_id, suggested_text, final_text, action, shown_at } = req.body;
+
+            if (!suggested_text || !action) {
+                return res.status(400).json({ error: 'suggested_text and action required' });
+            }
+
+            const order = await orderService.resolveOrderIdPublic(orderId as string);
+            if (!order) return res.status(404).json({ error: 'Order not found' });
+
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(
+                process.env.SUPABASE_URL || '',
+                process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ''
+            );
+
+            const managerId = (req.manager as Manager)?.id ?? null;
+
+            await supabase.from('suggestion_logs').insert({
+                suggestion_id: suggestion_id ?? null,
+                order_id: order.main_id ?? String(orderId),
+                manager_id: managerId ? Number(managerId) : null,
+                suggested_text,
+                final_text: final_text ?? null,
+                action,
+                needs_review: action === 'edited_and_sent',
+                shown_at,
+                acted_at: action !== 'ignored' ? new Date().toISOString() : null,
+            });
+
+            return res.json({ ok: true });
+        } catch (err: any) {
+            console.error('[logSuggestion]', err);
+            return res.status(500).json({ error: err.message });
         }
     }
 

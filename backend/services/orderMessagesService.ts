@@ -15,6 +15,10 @@ interface MessagePayload {
     content: string;
     replyToMessageId?: string | number;
     managerId: string | number;
+    suggestionId?: number | null;
+    suggestionText?: string | null;
+    suggestionWasEdited?: boolean;
+    shownAt?: string | null;
 }
 
 interface FilePayload {
@@ -113,7 +117,11 @@ class OrderMessagesService {
         };
     }
 
-    async sendClientMessage({ orderId, content, replyToMessageId, managerId }: MessagePayload) {
+    async resolveOrderIdPublic(orderId: string | number) {
+        return this.resolveOrderId(orderId);
+    }
+
+    async sendClientMessage({ orderId, content, replyToMessageId, managerId, suggestionId, suggestionText, suggestionWasEdited, shownAt }: MessagePayload) {
         if (!content || !content.trim()) throw new Error('Сообщение не может быть пустым');
 
         const order = await this.resolveOrderId(orderId);
@@ -219,6 +227,22 @@ class OrderMessagesService {
             order_id: order.id,
             message_id: savedMessage.id
         });
+
+        // Log suggestion interaction
+        if (suggestionId && suggestionText) {
+            const action = suggestionWasEdited ? 'edited_and_sent' : 'sent_as_is';
+            await supabase.from('suggestion_logs').insert({
+                suggestion_id: String(suggestionId),
+                order_id: order.main_id ?? String(orderId),
+                manager_id: Number(managerId),
+                suggested_text: suggestionText,
+                final_text: content,
+                action,
+                needs_review: action === 'edited_and_sent',
+                shown_at: shownAt ?? new Date().toISOString(),
+                acted_at: new Date().toISOString(),
+            });
+        }
 
         return savedMessage;
     }

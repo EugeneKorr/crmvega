@@ -13,10 +13,19 @@ export const orderMessagesAPI = {
         return response.data;
     },
 
-    sendClientMessage: async (orderId: number, content: string, replyToMessageId?: number): Promise<Message> => {
+    sendClientMessage: async (
+        orderId: number,
+        content: string,
+        replyToMessageId?: number,
+        suggestionMeta?: { id: number; text: string; shownAt: number; wasEdited: boolean } | null,
+    ): Promise<Message> => {
         const response = await api.post(`/order-messages/${orderId}/client`, {
             content,
             reply_to_message_id: replyToMessageId,
+            suggestion_id: suggestionMeta?.id ?? undefined,
+            suggestion_text: suggestionMeta?.text ?? undefined,
+            suggestion_was_edited: suggestionMeta?.wasEdited ?? undefined,
+            shown_at: suggestionMeta ? new Date(suggestionMeta.shownAt).toISOString() : undefined,
         });
         return response.data;
     },

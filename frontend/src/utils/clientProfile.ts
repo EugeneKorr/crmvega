@@ -41,10 +41,11 @@ function dealWord(n: number): string {
 }
 
 export function formatAnimalSubtitle(profile: ClientProfile): string {
-  const emoji = profile.animal_emoji ?? '👤';
   const adj   = profile.adjective ?? '';
   const name  = profile.animal_name ?? '';
   const label = profile.state ? STATE_LABELS[profile.state] : '';
   const n     = profile.deal_count ?? 0;
-  return `${emoji} ${adj} ${name} · ${label} · ${n} ${dealWord(n)}`.trim();
+  const adjCapital = adj ? adj.charAt(0).toUpperCase() + adj.slice(1) : '';
+  const nameLower  = name.toLowerCase();
+  return `${adjCapital} ${nameLower} · ${label} · ${n} ${dealWord(n)}`.trim();
 }

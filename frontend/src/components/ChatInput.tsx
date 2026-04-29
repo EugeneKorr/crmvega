@@ -13,12 +13,20 @@ import { WebsiteContent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 // @ts-ignore
 import Recorder from 'opus-recorder';
+import { SuggestionBar, SuggestionData } from './SuggestionBar';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
+interface SuggestionMeta {
+    id: number;
+    text: string;
+    shownAt: number;
+    wasEdited: boolean;
+}
+
 interface ChatInputProps {
-    onSendText: (text: string) => Promise<void>;
+    onSendText: (text: string, suggestionMeta?: SuggestionMeta | null) => Promise<void>;
     onSendVoice: (voice: Blob, duration: number) => Promise<void>;
     onSendFile: (file: File, caption?: string) => Promise<void>;
     onTyping?: () => void;
@@ -27,6 +35,10 @@ interface ChatInputProps {
     placeholder?: string;
     replyTo?: any;
     onCancelReply?: () => void;
+    inputMode?: 'client' | 'internal';
+    activeSuggestion?: SuggestionData | null;
+    onSuggestionIgnore?: (s: SuggestionData) => void;
+    onLucyCall?: (question: string) => Promise<void>;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -38,7 +50,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     replacements = {},
     placeholder,
     replyTo,
-    onCancelReply
+    onCancelReply,
+    inputMode,
+    activeSuggestion,
+    onSuggestionIgnore,
+    onLucyCall,
 }) => {
     const { manager } = useAuth();
     const [messageInput, setMessageInput] = useState('');
@@ -263,13 +279,34 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
 
         if (messageInput.trim()) {
+            // Lucy call detection (internal mode only)
+            const isLucy = inputMode === 'internal' && /^(люси|@lucy)\b/i.test(messageInput.trim());
+            if (isLucy) {
+                const question = messageInput.replace(/^(люси|@lucy)\s*/i, '').trim();
+                if (question && onLucyCall) {
+                    setMessageInput('');
+                    await onLucyCall(question);
+                }
+                return;
+            }
+
             try {
                 let contentToSend = messageInput;
                 if (templateButtons.length > 0) {
                     contentToSend = JSON.stringify({ text: messageInput, buttons: templateButtons });
                 }
 
-                await onSendText(contentToSend);
+                // Build suggestion meta if a suggestion was active
+                const sugMeta = activeSuggestion
+                    ? {
+                          id: activeSuggestion.id,
+                          text: activeSuggestion.suggested_response,
+                          shownAt: activeSuggestion.shown_at,
+                          wasEdited: contentToSend !== activeSuggestion.suggested_response,
+                      }
+                    : null;
+
+                await onSendText(contentToSend, sugMeta);
                 setMessageInput('');
                 setTemplateButtons([]);
             } catch (e) {
@@ -350,6 +387,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     ))}
                 </div>
             )}
+
+            <SuggestionBar
+                suggestion={activeSuggestion ?? null}
+                onInsert={(s) => {
+                    setMessageInput(s.suggested_response);
+                }}
+                onIgnore={(s) => {
+                    onSuggestionIgnore?.(s);
+                }}
+            />
 
             {replyTo && (
                 <div style={{

@@ -15,6 +15,8 @@ import { UnifiedMessageBubble } from './UnifiedMessageBubble';
 import { ChatInput } from './ChatInput';
 import { formatDate, isClientMessage } from '../utils/chatUtils';
 import { useOrderChat } from '../hooks/useOrderChat';
+import { AgentModeToggle } from './AgentModeToggle';
+import type { SuggestionData } from './SuggestionBar';
 
 interface OrderChatProps {
   orderId: number;
@@ -46,7 +48,15 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
     setReplyTo,
     fetchTimeline,
     sendMessage,
-    addReaction
+    addReaction,
+    agentMode,
+    agentModeLoading,
+    toggleAgentMode,
+    activeSuggestion,
+    setActiveSuggestion,
+    lucyMessages,
+    lucyLoading,
+    callLucy,
   } = useOrderChat(orderId, mainId ? String(mainId) : undefined, order?.contact_id);
 
   // Input mode: 'client' (default) or 'internal'
@@ -110,9 +120,26 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
   } : {};
 
   // Handlers
-  const handleSendText = async (text: string) => {
-    const success = await sendMessage(text, inputMode);
-    if (success) scrollToBottom();
+  const handleSendText = async (text: string, suggestionMeta?: { id: number; text: string; shownAt: number; wasEdited: boolean } | null) => {
+    const success = await sendMessage(text, inputMode, undefined, undefined, undefined, suggestionMeta);
+    if (success) {
+      if (suggestionMeta) setActiveSuggestion(null);
+      scrollToBottom();
+    }
+  };
+
+  const handleSuggestionIgnore = (s: SuggestionData) => {
+    fetch(`/api/order-messages/${orderId}/suggestion-log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        suggestion_id: s.id,
+        suggested_text: s.suggested_response,
+        action: 'ignored',
+        shown_at: new Date(s.shown_at).toISOString(),
+      }),
+    }).catch(console.error);
+    setActiveSuggestion(null);
   };
 
   const handleSendVoice = async (voice: Blob, duration: number) => {
@@ -264,7 +291,14 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
           {contactName || 'Чат с клиентом'}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {inputMode === 'client' && (
+            <AgentModeToggle
+              mode={agentMode}
+              loading={agentModeLoading}
+              onChange={toggleAgentMode}
+            />
+          )}
           <Tooltip title="Переключить режим отправки">
             <Switch
               checkedChildren={<><TeamOutlined /> Свои</>}
@@ -310,6 +344,46 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
         </div>
       )}
 
+      {/* Lucy panel — only in internal mode */}
+      {inputMode === 'internal' && lucyMessages.length > 0 && (
+        <div style={{ padding: '0 8px 6px', maxHeight: 300, overflowY: 'auto', borderTop: '1px solid #f0f0f0' }}>
+          {lucyMessages.map((msg) => (
+            <div key={msg.id} style={{
+              display: 'flex', gap: 8, alignItems: 'flex-start',
+              marginTop: 8,
+              flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+            }}>
+              {msg.role === 'lucy' && (
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%', background: '#D3ADF7',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, flexShrink: 0,
+                }}>🤖</div>
+              )}
+              <div style={{ maxWidth: 340 }}>
+                {msg.role === 'lucy' && (
+                  <span style={{ fontSize: 11, color: '#8c8c8c', display: 'block', marginBottom: 2 }}>Люси</span>
+                )}
+                <div style={{
+                  background: msg.role === 'lucy' ? '#F9F0FF' : '#f0f0f0',
+                  border: msg.role === 'lucy' ? '1px solid #D3ADF7' : 'none',
+                  borderRadius: msg.role === 'lucy' ? '0 12px 12px 12px' : '12px 0 12px 12px',
+                  padding: '8px 12px', fontSize: 13, color: '#1d1d1d', whiteSpace: 'pre-wrap',
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            </div>
+          ))}
+          {lucyLoading && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, color: '#8c8c8c', fontSize: 12 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#D3ADF7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🤖</div>
+              Люси думает…
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Input Area with visual indicator of mode */}
       <div style={{
         borderLeft: inputMode === 'internal' ? '4px solid #faad14' : '4px solid #1890ff',
@@ -321,7 +395,13 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, mainId, contactName, isM
           onSendFile={handleSendFile}
           sending={sending}
           replacements={replacements}
-          placeholder={inputMode === 'internal' ? "Внутренняя заметка..." : "Написать клиенту..."}
+          placeholder={inputMode === 'internal' ? "Внутренняя заметка или «люси вопрос»..." : "Написать клиенту..."}
+          inputMode={inputMode}
+          activeSuggestion={agentMode === 'auto' ? activeSuggestion : null}
+          onSuggestionIgnore={handleSuggestionIgnore}
+          onLucyCall={async (question) => {
+            if (manager?.id) await callLucy(question, manager.id);
+          }}
         />
       </div>
     </div>

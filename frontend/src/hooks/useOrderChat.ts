@@ -5,6 +5,8 @@ import { Message } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
+import { getAgentMode, setAgentMode as setAgentModeApi, callLucyChat } from '../services/api/agentMode';
+import type { SuggestionData } from '../components/SuggestionBar';
 
 interface TimelineMessage extends Message {
     source_type?: 'client' | 'internal';
@@ -34,6 +36,16 @@ const parseMessageDate = (m: any) => {
     return new Date(d).getTime();
 };
 
+interface LucyMessage {
+    id: number;
+    order_id: string;
+    role: 'user' | 'lucy';
+    content: string;
+    created_at: string;
+    author_type: 'lucy_user' | 'lucy';
+    manager_id?: number | null;
+}
+
 export const useOrderChat = (orderId: number, mainId?: string, contactId?: number) => {
     const { manager } = useAuth();
 
@@ -43,6 +55,13 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     const [hasMore, setHasMore] = useState(true);
     const [sending, setSending] = useState(false);
     const [replyTo, setReplyTo] = useState<TimelineMessage | null>(null);
+
+    const [agentMode, setAgentMode] = useState<'auto' | 'off'>('auto');
+    const [agentModeLoading, setAgentModeLoading] = useState(false);
+    const [activeSuggestion, setActiveSuggestion] = useState<SuggestionData | null>(null);
+    const [lucyMessages, setLucyMessages] = useState<LucyMessage[]>([]);
+    const [lucyLoading, setLucyLoading] = useState(false);
+    const suggestionChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
     const messagesRef = useRef<TimelineMessage[]>([]);
     useEffect(() => {
@@ -122,7 +141,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
     }, [orderId, fetchTimeline]);
 
     // Actions
-    const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number) => {
+    const sendMessage = async (content: string, mode: 'client' | 'internal', file?: File, voice?: Blob, voiceDuration?: number, suggestionMeta?: { id: number; text: string; shownAt: number; wasEdited: boolean } | null) => {
         if (!orderId) {
             antMessage.error('Нет активной заявки для отправки');
             return false;
@@ -169,7 +188,7 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
                 } else if (file) {
                     await orderMessagesAPI.sendClientFile(orderId, file, content, replyId);
                 } else if (content && content.trim()) {
-                    await orderMessagesAPI.sendClientMessage(orderId, content, replyId);
+                    await orderMessagesAPI.sendClientMessage(orderId, content, replyId, suggestionMeta);
                 }
             } else {
                 const replyId = replyTo ? replyTo.id : undefined;
@@ -219,6 +238,110 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         } catch (e) {
             console.error(e);
             // Revert on error? For now just log
+        }
+    };
+
+    // Load agent_mode and subscribe to AI suggestions via Realtime
+    useEffect(() => {
+        if (!mainId) return;
+        let cancelled = false;
+
+        (async () => {
+            const mode = await getAgentMode(mainId);
+            if (!cancelled) setAgentMode(mode);
+
+            const channel = supabase
+                .channel(`suggestions:${mainId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'Dataset',
+                        table: 'ai_suggestions',
+                        filter: `main_id=eq.${mainId}`,
+                    },
+                    (payload: any) => {
+                        const row = payload.new as {
+                            id: number;
+                            suggested_response: string;
+                            client_message: string;
+                        };
+                        setActiveSuggestion({
+                            id: row.id,
+                            suggested_response: row.suggested_response,
+                            client_message: row.client_message,
+                            shown_at: Date.now(),
+                        });
+                    }
+                )
+                .subscribe();
+
+            suggestionChannelRef.current = channel;
+        })();
+
+        return () => {
+            cancelled = true;
+            if (suggestionChannelRef.current) {
+                supabase.removeChannel(suggestionChannelRef.current);
+                suggestionChannelRef.current = null;
+            }
+        };
+    }, [mainId]);
+
+    const toggleAgentMode = async (newMode: 'auto' | 'off') => {
+        if (!mainId) return;
+        setAgentModeLoading(true);
+        try {
+            await setAgentModeApi(mainId, newMode);
+            setAgentMode(newMode);
+        } finally {
+            setAgentModeLoading(false);
+        }
+    };
+
+    const callLucy = async (question: string, managerId: number) => {
+        if (!mainId) return;
+        setLucyLoading(true);
+
+        const userMsg: LucyMessage = {
+            id: Date.now(),
+            order_id: mainId,
+            role: 'user',
+            author_type: 'lucy_user',
+            content: question,
+            created_at: new Date().toISOString(),
+            manager_id: managerId,
+        };
+        setLucyMessages((prev) => [...prev, userMsg]);
+
+        try {
+            const answer = await callLucyChat(mainId, question, managerId);
+            const lucyMsg: LucyMessage = {
+                id: Date.now() + 1,
+                order_id: mainId,
+                role: 'lucy',
+                author_type: 'lucy',
+                content: answer,
+                created_at: new Date().toISOString(),
+                manager_id: null,
+            };
+            setLucyMessages((prev) => [...prev, lucyMsg]);
+        } catch (err) {
+            console.error('[callLucy]', err);
+            setLucyMessages((prev) => [
+                ...prev,
+                {
+                    id: Date.now() + 2,
+                    order_id: mainId,
+                    role: 'lucy',
+                    author_type: 'lucy',
+                    content: '⚠️ Не удалось получить ответ. Попробуй ещё раз.',
+                    created_at: new Date().toISOString(),
+                    manager_id: null,
+                },
+            ]);
+        } finally {
+            setLucyLoading(false);
         }
     };
 
@@ -338,6 +461,14 @@ export const useOrderChat = (orderId: number, mainId?: string, contactId?: numbe
         setReplyTo,
         fetchTimeline,
         sendMessage,
-        addReaction
+        addReaction,
+        agentMode,
+        agentModeLoading,
+        toggleAgentMode,
+        activeSuggestion,
+        setActiveSuggestion,
+        lucyMessages,
+        lucyLoading,
+        callLucy,
     };
 };
