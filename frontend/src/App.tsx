@@ -149,11 +149,13 @@ const AppRoutes: React.FC = () => {
 
 import { PresenceProvider } from './context/PresenceContext';
 import { ClientProfileProvider } from './contexts/ClientProfileContext';
+import { DesignProvider, useDesign } from './contexts/DesignContext';
 
-const App: React.FC = () => {
-  console.log('🚀 ТЕСТОВАЯ СРЕДА (STAGING)');
+const AppContent: React.FC = () => {
+  const { useNewDesign } = useDesign();
+
   return (
-    <ConfigProvider locale={ruRU} theme={theme}>
+    <ConfigProvider locale={ruRU} theme={useNewDesign ? theme : undefined}>
       <AuthProvider>
         <ClientProfileProvider>
           <PresenceProvider>
@@ -164,6 +166,15 @@ const App: React.FC = () => {
         </ClientProfileProvider>
       </AuthProvider>
     </ConfigProvider>
+  );
+};
+
+const App: React.FC = () => {
+  console.log('🚀 ТЕСТОВАЯ СРЕДА (STAGING)');
+  return (
+    <DesignProvider>
+      <AppContent />
+    </DesignProvider>
   );
 };
 

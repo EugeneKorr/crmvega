@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import type { MenuProps } from 'antd';
 import BottomNavigation from './BottomNavigation';
 import { updateFavicon } from '../utils/favicon';
+import { DesignToggle } from './DesignToggle';
 
 const { Header, Sider, Content } = Layout;
 const { useBreakpoint } = Grid;
@@ -401,6 +402,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               <Badge count={unreadTotal}>
                 <BellOutlined style={{ fontSize: 18, cursor: 'pointer' }} onClick={() => navigate('/inbox?filter=unread')} />
               </Badge>
+              <DesignToggle />
               <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
                 <Space style={{ cursor: 'pointer' }}>
                   <Avatar icon={<UserOutlined />} src={manager?.avatar_url} />
