@@ -36,6 +36,74 @@ interface BubbleMessagePayload {
     [key: string]: any; // Allow loose access
 }
 
+// ─── SLA Proactive helpers ────────────────────────────────────────────────────
+
+function getMadridHourAsUtc(startHour: number, nowUtc: Date): Date {
+  const nowInMadrid = new Date(nowUtc.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }));
+  const offsetMs    = nowUtc.getTime() - nowInMadrid.getTime();
+  const madridDate  = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(nowUtc);
+  const [year, month, day] = madridDate.split('-').map(Number);
+  const madridLocal = new Date(year, month - 1, day, startHour, 0, 0, 0);
+  return new Date(madridLocal.getTime() + offsetMs);
+}
+
+async function createProactiveSla(order: any): Promise<void> {
+  const dt  = String(order.DeliveryTime ?? '');
+  const now = new Date();
+  let proactiveType: string;
+  let deadlineUtc: Date;
+
+  if (/в течение дня|втд|как можно скорее|кмс/i.test(dt)) {
+    proactiveType = 'vtd';
+    deadlineUtc   = new Date(now.getTime() + 30 * 60 * 1000);
+  } else {
+    const m = dt.match(/с\s*(\d{1,2})/i);
+    if (!m) return;
+    proactiveType = 'timeslot';
+    const startHour = parseInt(m[1], 10);
+    deadlineUtc     = getMadridHourAsUtc(startHour, now);
+    deadlineUtc     = new Date(deadlineUtc.getTime() - 30 * 60 * 1000);
+    if (deadlineUtc <= now) return;
+  }
+
+  const mainId = String(order.main_id);
+
+  const { data: existing } = await supabase
+    .from('sla_active')
+    .select('proactive_type')
+    .eq('main_id', mainId)
+    .maybeSingle();
+
+  if (existing && existing.proactive_type === null) {
+    console.log(`[SLA Proactive] main_id=${mainId} reactive record exists — skip`);
+    return;
+  }
+
+  const { error } = await supabase
+    .from('sla_active')
+    .upsert({
+      main_id:                mainId,
+      last_msg_at:            now.toISOString(),
+      last_msg_text:          '',
+      last_msg_user:          'system',
+      proactive_type:         proactiveType,
+      proactive_deadline_utc: deadlineUtc.toISOString(),
+      warning_sent_at:        null,
+      alert_sent_at:          null,
+    }, { onConflict: 'main_id' });
+
+  if (error) {
+    console.error(`[SLA Proactive] Upsert failed main_id=${mainId}:`, error.message);
+  } else {
+    console.log(`[SLA Proactive] ${proactiveType} created main_id=${mainId} deadline=${deadlineUtc.toISOString()}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 class BubbleService {
 
     // --- Helpers ---
@@ -422,6 +490,12 @@ class BubbleService {
 
             runAutomations('order_status_changed', updatedOrder).catch(e => console.error('Auto error', e));
             updates.push({ id: updatedOrder.id, old: order.status, new: internalStatus });
+
+            if (internalStatus.startsWith('transferred_')) {
+                createProactiveSla(updatedOrder).catch(e =>
+                    console.error('[SLA Proactive] Failed:', e)
+                );
+            }
         }
         return { updates, errors };
     }
